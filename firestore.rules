@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Public profiles: anyone signed in can read (friend search); only the owner writes.
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid);
+      allow delete: if false;
+
+      // A user's friends subcollection. Readable by the owner; written by the
+      // owner or by a friend during the (batched) accept flow.
+      match /friends/{friendUid} {
+        allow read: if isSelf(uid);
+        allow write: if isSelf(uid) || isSelf(friendUid);
+      }
+
+      // Match history is private to the owner.
+      match /matchHistory/{entryId} {
+        allow read, write: if isSelf(uid);
+      }
+    }
+
+    // Statistics: world-readable for leaderboards; only the owner can write.
+    match /statistics/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid);
+    }
+
+    // Settings are private to the owner.
+    match /settings/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
+    // Friend requests: visible to sender and recipient; the recipient resolves them.
+    match /friendRequests/{requestId} {
+      allow read: if isSignedIn() &&
+        (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.fromUid == request.auth.uid;
+      allow delete: if isSignedIn() &&
+        (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow update: if false;
+    }
+
+    match /leaderboard/{entryId} {
+      allow read: if isSignedIn();
+      allow write: if false; // maintained server-side only
+    }
+  }
+}

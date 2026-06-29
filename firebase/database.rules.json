@@ -1,0 +1,58 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "gameMembers": {
+      "$gameId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child(auth.uid).exists())"
+      }
+    },
+
+    "games": {
+      "$gameId": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
+        "players": {
+          "$playerId": {
+            "isConnected": {
+              ".validate": "newData.isBoolean()"
+            }
+          }
+        },
+        ".validate": "newData.hasChildren(['id', 'board', 'players', 'turnOrder', 'currentTurn'])"
+      }
+    },
+
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists() || newData.child('members').child(auth.uid).exists() || data.child('hostUid').val() == auth.uid)"
+      }
+    },
+
+    "roomCodes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null"
+      }
+    },
+
+    "matchmaking": {
+      "queue": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && (auth.uid == $uid || (data.exists() && !data.child('gameId').exists() && newData.child('gameId').isString()))"
+        }
+      }
+    },
+
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    }
+  }
+}

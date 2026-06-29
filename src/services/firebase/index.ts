@@ -1,0 +1,14 @@
+export { firebaseApp, firebaseAuth, realtimeDb, firestore } from './config';
+export { authService } from './authService';
+export type { FirebaseUser } from './authService';
+export { userRepository } from './userRepository';
+export { friendRepository } from './friendRepository';
+export { matchHistoryRepository } from './matchHistoryRepository';
+export { gameRepository } from './gameRepository';
+export type { ApplyMoveResult } from './gameRepository';
+export { roomRepository } from './roomRepository';
+export { matchmakingRepository } from './matchmakingRepository';
+export { presenceRepository } from './presenceRepository';
+export type { PresenceState } from './presenceRepository';
+export { messagingService } from './messagingService';
+export { Collections, RtdbPaths } from './paths';

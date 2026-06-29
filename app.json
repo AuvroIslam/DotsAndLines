@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Dots & Boxes",
+    "slug": "dots-and-boxes",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "dotsandboxes",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dotsandboxes.app"
+    },
+    "android": {
+      "package": "com.dotsandboxes.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0E1116"
+        }
+      ],
+      "expo-asset",
+      "expo-audio"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
