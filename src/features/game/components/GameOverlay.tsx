@@ -18,24 +18,26 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
   if (!result) return null;
 
   const iWon = !!myPlayerId && result.winners.includes(myPlayerId);
-  const title = result.isDraw ? "It's a Draw!" : iWon ? 'You Win! 🎉' : 'You Lose';
-  const winnerNames = result.winners
-    .map((id) => game.players[id]?.displayName)
-    .filter(Boolean)
-    .join(', ');
-
+  const winnerLabel = result.winners.map((id) => game.players[id]?.displayName).filter(Boolean).join(', ');
+  const title = result.isDraw
+    ? "It's a Draw!"
+    : myPlayerId === null
+      ? `${winnerLabel} Wins!`
+      : iWon
+        ? 'You Win! 🎉'
+        : 'You Lose';
   return (
     <Animated.View entering={FadeIn.duration(250)} style={styles.backdrop}>
       <View style={styles.card}>
         <Typography variant="h1" center>
-          {result.isDraw ? '🤝' : iWon ? '🏆' : '😔'}
+          {result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
         </Typography>
         <Typography variant="h2" center>
           {title}
         </Typography>
         {!result.isDraw ? (
           <Typography variant="body" muted center>
-            Winner: {winnerNames}
+            Winner: {winnerLabel}
           </Typography>
         ) : null}
 

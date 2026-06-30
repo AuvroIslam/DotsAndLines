@@ -12,4 +12,5 @@ export const Routes = {
   profile: '/(app)/profile',
   settings: '/(app)/settings',
   statistics: '/(app)/statistics',
+  localGame: '/(app)/local-game',
 } as const;

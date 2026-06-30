@@ -10,3 +10,5 @@ export { useRoom } from './hooks/useRoom';
 export { useRandomMatchmaking } from './hooks/useRandomMatchmaking';
 export { useConnectionMonitor } from './hooks/useConnectionMonitor';
 export { useMatchRecorder } from './hooks/useMatchRecorder';
+export { useLocalGame } from './hooks/useLocalGame';
+export type { LocalPlayer, UseLocalGameReturn } from './hooks/useLocalGame';

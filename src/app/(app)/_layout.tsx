@@ -23,6 +23,7 @@ export default function AppLayout() {
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="statistics" options={{ title: 'Statistics' }} />
+      <Stack.Screen name="local-game" options={{ headerShown: false }} />
     </Stack>
   );
 }

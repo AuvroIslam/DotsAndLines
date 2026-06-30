@@ -50,6 +50,24 @@ cp .env.example .env   # fill Firebase + Google OAuth values (Step 2/3)
 npm run start
 ```
 
+## Local Hotseat (Offline 1v1)
+
+You can now play a local 1v1 (hotseat) game on a single device without Firebase or authentication.
+
+- Entry screen: open the app and choose "Local Play" from the main menu.
+- Files: `src/app/(app)/local-game.tsx`, `src/features/game/hooks/useLocalGame.ts` (new additions).
+
+Run the app locally (Metro on port 8081):
+
+```bash
+npx expo start --clear --port 8081
+```
+
+Notes:
+- Hotseat uses the pure `gameEngine` (no network calls). Player identities are ephemeral (`local-1`, `local-2`).
+- Turn timer network-skipping is disabled for hotseat; turns are handled locally.
+- Future additions may include Local vs AI and an in-memory repo to reuse online UI.
+
 Scripts: `lint`, `lint:fix`, `format`, `typecheck`, `test`.
 
 ## Build Plan (incremental)

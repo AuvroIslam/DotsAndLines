@@ -34,6 +34,11 @@ export default function HomeScreen() {
         <Button label="Cancel search" variant="ghost" onPress={matchmaking.cancel} />
       ) : null}
       <Button
+        label="Local Play"
+        variant="secondary"
+        onPress={() => router.push(Routes.localGame)}
+      />
+      <Button
         label="Create Room"
         variant="secondary"
         onPress={() => router.push(Routes.createRoom)}
