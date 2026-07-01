@@ -9,6 +9,14 @@ describe('Board geometry', () => {
     expect(Board.totalBoxes(5)).toBe(25);
   });
 
+  it('enumerates every legal line exactly once', () => {
+    const lines = Board.getAllLines(3);
+    expect(lines).toHaveLength(Board.totalLines(3));
+    const keys = new Set(lines.map(lineToKey));
+    expect(keys.size).toBe(lines.length);
+    expect(lines.every((l) => Board.isLineInBounds(l, 3))).toBe(true);
+  });
+
   it('validates line bounds', () => {
     expect(Board.isLineInBounds({ orientation: 'horizontal', row: 3, col: 2 }, 3)).toBe(true);
     expect(Board.isLineInBounds({ orientation: 'horizontal', row: 4, col: 0 }, 3)).toBe(false);

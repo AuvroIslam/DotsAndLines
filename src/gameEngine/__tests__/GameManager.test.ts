@@ -1,5 +1,6 @@
 import type { Player } from '@/types';
 
+import { Board } from '../Board';
 import { GameManager } from '../GameManager';
 
 function players(n: number): Player[] {
@@ -73,7 +74,7 @@ describe('GameManager', () => {
     let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
     // Play every legal edge in order; whoever closes boxes keeps going. We just
     // need the terminal state to be 'finished' with a valid result.
-    const allLines = enumerateLines(3);
+    const allLines = Board.getAllLines(3);
     for (const line of allLines) {
       const mover = g.currentTurn;
       const out = GameManager.applyMove(g, line, mover);
@@ -85,12 +86,3 @@ describe('GameManager', () => {
     expect(totalBoxes).toBe(9);
   });
 });
-
-function enumerateLines(n: number) {
-  const lines: { orientation: 'horizontal' | 'vertical'; row: number; col: number }[] = [];
-  for (let row = 0; row <= n; row += 1)
-    for (let col = 0; col < n; col += 1) lines.push({ orientation: 'horizontal', row, col });
-  for (let row = 0; row < n; row += 1)
-    for (let col = 0; col <= n; col += 1) lines.push({ orientation: 'vertical', row, col });
-  return lines;
-}

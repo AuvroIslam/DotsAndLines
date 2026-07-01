@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Screen, TextField, Typography } from '@/components/ui';
+import { Button, Screen, SegmentedControl, TextField, Typography } from '@/components/ui';
 import {
   GameBoard,
   GameOverlay,
   Scoreboard,
   TurnTimerBar,
 } from '@/features/game';
+import type { AIDifficulty } from '@/features/game/ai';
 import { useLocalGame } from '@/features/game/hooks/useLocalGame';
 import { Routes } from '@/navigation/routes';
 import { haptics, sound } from '@/services/feedback';
@@ -18,21 +19,29 @@ import type { BoardSize } from '@/types';
 
 const BOARD_SIZES: BoardSize[] = [3, 4, 5];
 const PLAYER_COLORS = ['#e74c3c', '#3498db'] as const;
+const DIFFICULTIES: { label: string; value: AIDifficulty }[] = [
+  { label: 'Easy', value: 'easy' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Hard', value: 'hard' },
+];
 
 export default function LocalGameScreen() {
   const router = useRouter();
-  const { game, makeMove, skipTurn, reset, startGame } = useLocalGame();
+  const { game, aiThinking, makeMove, skipTurn, reset, startGame } = useLocalGame();
 
   const [boardSize, setBoardSize] = useState<BoardSize>(3);
   const [names, setNames] = useState<[string, string]>(['Player 1', 'Player 2']);
+  const [opponent, setOpponent] = useState<'human' | 'ai'>('human');
+  const [difficulty, setDifficulty] = useState<AIDifficulty>('medium');
 
   const currentPlayer = game ? (game.players[game.currentTurn] ?? null) : null;
+  const isAITurn = opponent === 'ai' && game?.currentTurn === 'local-2';
 
   const [timerFraction, setTimerFraction] = useState(1);
   const skipFiredRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!game || game.phase !== 'playing') {
+    if (!game || game.phase !== 'playing' || isAITurn) {
       setTimerFraction(1);
       return;
     }
@@ -51,7 +60,7 @@ export default function LocalGameScreen() {
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [game, skipTurn]);
+  }, [game, isAITurn, skipTurn]);
 
   const prevLines = useRef(0);
   const prevBoxes = useRef(0);
@@ -77,7 +86,9 @@ export default function LocalGameScreen() {
   const handleStart = () => {
     startGame(boardSize, [
       { id: 'local-1', displayName: names[0] || 'Player 1', color: PLAYER_COLORS[0] },
-      { id: 'local-2', displayName: names[1] || 'Player 2', color: PLAYER_COLORS[1] },
+      opponent === 'ai'
+        ? { id: 'local-2', displayName: 'Computer', color: PLAYER_COLORS[1], isAI: true, aiDifficulty: difficulty }
+        : { id: 'local-2', displayName: names[1] || 'Player 2', color: PLAYER_COLORS[1] },
     ]);
     prevLines.current = 0;
     prevBoxes.current = 0;
@@ -107,6 +118,18 @@ export default function LocalGameScreen() {
         </View>
 
         <Typography variant="h3" style={styles.sectionTop}>
+          Opponent
+        </Typography>
+        <SegmentedControl
+          options={[
+            { label: 'Human', value: 'human' },
+            { label: 'Computer', value: 'ai' },
+          ]}
+          value={opponent}
+          onChange={setOpponent}
+        />
+
+        <Typography variant="h3" style={styles.sectionTop}>
           Players
         </Typography>
         <View style={styles.playerRow}>
@@ -118,15 +141,21 @@ export default function LocalGameScreen() {
             style={styles.nameField}
           />
         </View>
-        <View style={styles.playerRow}>
-          <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[1] }]} />
-          <TextField
-            value={names[1]}
-            onChangeText={(v) => setNames([names[0], v])}
-            placeholder="Player 2"
-            style={styles.nameField}
-          />
-        </View>
+        {opponent === 'ai' ? (
+          <View style={styles.sectionTop}>
+            <SegmentedControl options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
+          </View>
+        ) : (
+          <View style={styles.playerRow}>
+            <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[1] }]} />
+            <TextField
+              value={names[1]}
+              onChangeText={(v) => setNames([names[0], v])}
+              placeholder="Player 2"
+              style={styles.nameField}
+            />
+          </View>
+        )}
 
         <Button label="Start Game" style={styles.sectionTop} onPress={handleStart} />
         <Button label="Back" variant="ghost" onPress={() => router.back()} />
@@ -135,7 +164,11 @@ export default function LocalGameScreen() {
   }
 
   const turnLabel =
-    game.phase === 'finished' ? 'Game over' : `${currentPlayer?.displayName ?? '?'}'s turn`;
+    game.phase === 'finished'
+      ? 'Game over'
+      : isAITurn && aiThinking
+        ? `${currentPlayer?.displayName ?? '?'} is thinking…`
+        : `${currentPlayer?.displayName ?? '?'}'s turn`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -169,7 +202,7 @@ export default function LocalGameScreen() {
         <GameBoard
           game={game}
           pendingLines={new Set()}
-          interactive={game.phase === 'playing'}
+          interactive={game.phase === 'playing' && !isAITurn}
           onDraw={(line) => {
             haptics.selection();
             makeMove(line);

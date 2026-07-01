@@ -17,3 +17,7 @@ export const ROOM_CODE_LENGTH = 6;
 export const RECONNECT_BASE_DELAY_MS = 1_000;
 export const RECONNECT_MAX_DELAY_MS = 15_000;
 export const PRESENCE_HEARTBEAT_MS = 10_000;
+
+/** Randomized "thinking" delay before a local AI opponent plays its move. */
+export const AI_MOVE_MIN_DELAY_MS = 500;
+export const AI_MOVE_MAX_DELAY_MS = 900;

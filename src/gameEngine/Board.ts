@@ -26,6 +26,18 @@ export class Board {
     return (size + 1) * size * 2;
   }
 
+  /** Every legal line on a board of the given size, in stable order. */
+  static getAllLines(size: BoardSize): Line[] {
+    const lines: Line[] = [];
+    for (let row = 0; row <= size; row += 1) {
+      for (let col = 0; col < size; col += 1) lines.push({ orientation: 'horizontal', row, col });
+    }
+    for (let row = 0; row < size; row += 1) {
+      for (let col = 0; col <= size; col += 1) lines.push({ orientation: 'vertical', row, col });
+    }
+    return lines;
+  }
+
   static totalBoxes(size: BoardSize): number {
     return size * size;
   }
