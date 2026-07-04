@@ -7,13 +7,15 @@ import { useFriends } from '@/features/friends';
 import { Routes } from '@/navigation/routes';
 import { roomRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors } from '@/theme/useTheme';
 
 export default function FriendsScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const { friends, searchResults, isSearching, search, sendRequest, removeFriend } = useFriends();
   const [queryText, setQueryText] = useState('');
+  const colors = useThemeColors();
 
   const onSearch = (text: string) => {
     setQueryText(text);
@@ -77,20 +79,20 @@ export default function FriendsScreen() {
             subtitle="Search by username to send your first request."
           />
         }
-        ItemSeparatorComponent={() => <View style={{ height: theme.spacing.sm }} />}
+        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         renderItem={({ item }) => (
           <Card style={styles.row}>
             <Avatar
               name={item.displayName}
               uri={item.photoURL}
               size={40}
-              color={theme.colors.success}
+              color={colors.success}
             />
             <View style={styles.info}>
               <Typography variant="body">{item.displayName}</Typography>
               <Typography
                 variant="caption"
-                color={item.isOnline ? theme.colors.success : theme.colors.textMuted}
+                color={item.isOnline ? colors.success : colors.textMuted}
               >
                 {item.isOnline ? 'Online' : 'Offline'}
               </Typography>
@@ -114,9 +116,9 @@ export default function FriendsScreen() {
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: theme.spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  section: { marginTop: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   info: { flex: 1 },
-  smallBtn: { height: 40, paddingHorizontal: theme.spacing.md },
+  smallBtn: { height: 40, paddingHorizontal: spacing.md },
   iconBtn: { height: 40, width: 40, paddingHorizontal: 0 },
 });

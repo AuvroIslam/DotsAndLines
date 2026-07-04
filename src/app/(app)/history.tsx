@@ -1,16 +1,20 @@
+import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
 import { Card, EmptyState, Loader, Screen, Typography } from '@/components/ui';
 import { useMatchHistory } from '@/features/profile';
 import { useAuthStore } from '@/store';
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { MatchOutcome } from '@/types';
 
-const OUTCOME_COLOR: Record<MatchOutcome, string> = {
-  win: theme.colors.success,
-  loss: theme.colors.danger,
-  draw: theme.colors.warning,
-};
+function outcomeColor(colors: AppColors): Record<MatchOutcome, string> {
+  return {
+    win: colors.success,
+    loss: colors.danger,
+    draw: colors.warning,
+  };
+}
 
 function timeAgo(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60000);
@@ -24,6 +28,8 @@ function timeAgo(ts: number): string {
 export default function HistoryScreen() {
   const uid = useAuthStore((s) => s.user?.uid ?? null);
   const { data: history, isLoading } = useMatchHistory(uid);
+  const colors = useThemeColors();
+  const outcomeColors = useMemo(() => outcomeColor(colors), [colors]);
 
   if (isLoading) return <Loader message="Loading history…" />;
 
@@ -39,11 +45,11 @@ export default function HistoryScreen() {
             subtitle="Play a game to start your history."
           />
         }
-        ItemSeparatorComponent={() => <View style={{ height: theme.spacing.sm }} />}
+        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         renderItem={({ item }) => (
           <Card style={styles.row}>
-            <View style={[styles.badge, { backgroundColor: OUTCOME_COLOR[item.outcome] }]}>
-              <Typography variant="caption" color={theme.colors.bg}>
+            <View style={[styles.badge, { backgroundColor: outcomeColors[item.outcome] }]}>
+              <Typography variant="caption" color={colors.bg}>
                 {item.outcome.toUpperCase()}
               </Typography>
             </View>
@@ -66,7 +72,7 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-  badge: { borderRadius: theme.radius.sm, paddingHorizontal: theme.spacing.sm, paddingVertical: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  badge: { borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   info: { flex: 1 },
 });

@@ -6,16 +6,18 @@ import { Loader } from '@/components/ui';
 import { useAppBootstrap } from '@/hooks/useAppBootstrap';
 import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 import { useAuthStore } from '@/store';
+import { useAppColorScheme, useThemeColors } from '@/theme/useTheme';
 
 function RootNavigator() {
   const status = useAuthStore((s) => s.status);
   const { ready } = useAppBootstrap();
   useProtectedRoute(status);
+  const colors = useThemeColors();
 
   if (!ready) return <Loader message="Loading…" />;
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0E1116' } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
     </Stack>
@@ -23,9 +25,10 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const scheme = useAppColorScheme();
   return (
     <AppProviders>
-      <StatusBar style="light" />
+      <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />
       <RootNavigator />
     </AppProviders>
   );

@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 import { Typography } from './Typography';
 
@@ -15,6 +17,8 @@ export function SegmentedControl<T extends string | number>({
   value,
   onChange,
 }: SegmentedControlProps<T>) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.container}>
       {options.map((opt) => {
@@ -25,7 +29,7 @@ export function SegmentedControl<T extends string | number>({
             onPress={() => onChange(opt.value)}
             style={[styles.segment, active && styles.active]}
           >
-            <Typography variant="body" color={active ? theme.colors.text : theme.colors.textMuted}>
+            <Typography variant="body" color={active ? colors.text : colors.textMuted}>
               {opt.label}
             </Typography>
           </Pressable>
@@ -35,21 +39,22 @@ export function SegmentedControl<T extends string | number>({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.xs,
-    gap: theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: theme.spacing.sm,
-    alignItems: 'center',
-    borderRadius: theme.radius.sm,
-  },
-  active: { backgroundColor: theme.colors.primary },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: 'row',
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      padding: spacing.xs,
+      gap: spacing.xs,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    segment: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      alignItems: 'center',
+      borderRadius: radius.sm,
+    },
+    active: { backgroundColor: colors.primary },
+  });

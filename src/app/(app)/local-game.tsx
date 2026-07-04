@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,7 +14,8 @@ import type { AIDifficulty } from '@/features/game/ai';
 import { useLocalGame } from '@/features/game/hooks/useLocalGame';
 import { Routes } from '@/navigation/routes';
 import { haptics, sound } from '@/services/feedback';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { BoardSize } from '@/types';
 
 const BOARD_SIZES: BoardSize[] = [3, 4, 5];
@@ -28,6 +29,8 @@ const DIFFICULTIES: { label: string; value: AIDifficulty }[] = [
 export default function LocalGameScreen() {
   const router = useRouter();
   const { game, aiThinking, makeMove, skipTurn, reset, startGame } = useLocalGame();
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [boardSize, setBoardSize] = useState<BoardSize>(3);
   const [names, setNames] = useState<[string, string]>(['Player 1', 'Player 2']);
@@ -194,7 +197,7 @@ export default function LocalGameScreen() {
       <View style={styles.timerRow}>
         <TurnTimerBar
           fraction={timerFraction}
-          color={currentPlayer?.color ?? theme.colors.primary}
+          color={currentPlayer?.color ?? colors.primary}
         />
       </View>
 
@@ -228,22 +231,23 @@ export default function LocalGameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    padding: theme.spacing.lg,
-    gap: theme.spacing.md,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  spacer: { width: 64 },
-  turnRow: { alignItems: 'center' },
-  timerRow: { paddingHorizontal: theme.spacing.xl },
-  boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  sectionTop: { marginTop: theme.spacing.md },
-  sizeRow: { flexDirection: 'row', gap: theme.spacing.md },
-  sizeBtn: { flex: 1 },
-  playerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-  colorDot: { width: 20, height: 20, borderRadius: 10 },
-  nameField: { flex: 1 },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    spacer: { width: 64 },
+    turnRow: { alignItems: 'center' },
+    timerRow: { paddingHorizontal: spacing.xl },
+    boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    sectionTop: { marginTop: spacing.md },
+    sizeRow: { flexDirection: 'row', gap: spacing.md },
+    sizeBtn: { flex: 1 },
+    playerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    colorDot: { width: 20, height: 20, borderRadius: 10 },
+    nameField: { flex: 1 },
+  });

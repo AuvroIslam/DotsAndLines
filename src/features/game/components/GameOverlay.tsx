@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { Button, Typography } from '@/components/ui';
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState } from '@/types';
 
 interface GameOverlayProps {
@@ -14,6 +16,8 @@ interface GameOverlayProps {
 
 /** Winner / draw screen shown when the game finishes. */
 export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlayProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const result = game.result;
   if (!result) return null;
 
@@ -64,26 +68,27 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.lg,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    gap: theme.spacing.md,
-  },
-  scores: { gap: theme.spacing.sm, marginVertical: theme.spacing.sm },
-  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  dot: { width: 14, height: 14, borderRadius: 7 },
-  scoreName: { flex: 1 },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.xl,
+      gap: spacing.md,
+    },
+    scores: { gap: spacing.sm, marginVertical: spacing.sm },
+    scoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    dot: { width: 14, height: 14, borderRadius: 7 },
+    scoreName: { flex: 1 },
+  });

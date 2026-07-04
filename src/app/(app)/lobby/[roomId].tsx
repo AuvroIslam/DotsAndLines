@@ -4,12 +4,14 @@ import { StyleSheet, View } from 'react-native';
 import { Avatar, Button, Card, Loader, Screen, Typography } from '@/components/ui';
 import { useRoom } from '@/features/game';
 import { useAuthStore } from '@/store';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors } from '@/theme/useTheme';
 
 export default function LobbyScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const uid = useAuthStore((s) => s.user?.uid ?? null);
   const { room, members, me, isHost, everyoneReady, toggleReady, leave, start } = useRoom(roomId);
+  const colors = useThemeColors();
 
   if (!room) return <Loader message="Loading lobby…" />;
 
@@ -46,7 +48,7 @@ export default function LobbyScreen() {
           <View
             style={[
               styles.readyDot,
-              { backgroundColor: m.isReady ? theme.colors.success : theme.colors.border },
+              { backgroundColor: m.isReady ? colors.success : colors.border },
             ]}
           />
         </Card>
@@ -75,7 +77,7 @@ export default function LobbyScreen() {
 const styles = StyleSheet.create({
   codeCard: { alignItems: 'center' },
   code: { letterSpacing: 6 },
-  memberRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   memberInfo: { flex: 1 },
   readyDot: { width: 14, height: 14, borderRadius: 7 },
   flex: { flex: 1 },

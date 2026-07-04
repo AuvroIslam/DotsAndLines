@@ -1,16 +1,19 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button, Screen, Typography } from '@/components/ui';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAuthStore } from '@/store';
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 export default function SignInScreen() {
   const signInAnonymously = useAuthStore((s) => s.signInAnonymously);
   const error = useAuthStore((s) => s.error);
   const google = useGoogleAuth();
   const [busy, setBusy] = useState(false);
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const handleAnonymous = async () => {
     setBusy(true);
@@ -49,7 +52,7 @@ export default function SignInScreen() {
           loading={busy}
         />
         {error ? (
-          <Typography variant="caption" color={theme.colors.danger} center>
+          <Typography variant="caption" color={colors.danger} center>
             {error}
           </Typography>
         ) : null}
@@ -58,16 +61,17 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  content: { justifyContent: 'space-between', paddingVertical: theme.spacing.xxl },
-  hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.md },
-  logo: {
-    width: 96,
-    height: 96,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actions: { gap: theme.spacing.md },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    content: { justifyContent: 'space-between', paddingVertical: spacing.xxl },
+    hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
+    logo: {
+      width: 96,
+      height: 96,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actions: { gap: spacing.md },
+  });

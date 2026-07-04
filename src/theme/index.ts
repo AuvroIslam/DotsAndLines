@@ -1,4 +1,4 @@
-import { palette, playerColors } from './colors';
+import { darkPalette, palette, playerColors } from './colors';
 
 export const spacing = {
   xs: 4,
@@ -34,4 +34,10 @@ export const theme = {
 
 export type Theme = typeof theme;
 
-export { palette, playerColors };
+export { palette, playerColors, darkPalette };
+export { lightPalette } from './colors';
+export type { AppColors, ColorScheme } from './colors';
+
+// Note: the reactive `useThemeColors`/`useAppColorScheme` hooks live in `./useTheme`,
+// not here — that module pulls in the settings store (and transitively Firebase),
+// which pure/offline-only consumers of this barrel (e.g. services/local/*) must not.

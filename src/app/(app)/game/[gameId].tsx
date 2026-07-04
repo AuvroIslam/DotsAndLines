@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -18,12 +18,15 @@ import {
 import { Routes } from '@/navigation/routes';
 import { haptics, sound } from '@/services/feedback';
 import { useAuthStore } from '@/store';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 export default function GameScreen() {
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
   const router = useRouter();
   const uid = useAuthStore((s) => s.user?.uid ?? null);
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const live = useLiveGame(gameId);
   const { game, isMyTurn, currentPlayer, connection, pendingLines, makeMove, myPlayerId } = live;
@@ -82,7 +85,7 @@ export default function GameScreen() {
         </Typography>
       </View>
       <View style={styles.timer}>
-        <TurnTimerBar fraction={fraction} color={currentPlayer?.color ?? theme.colors.primary} />
+        <TurnTimerBar fraction={fraction} color={currentPlayer?.color ?? colors.primary} />
       </View>
 
       <View style={styles.boardArea}>
@@ -108,16 +111,17 @@ export default function GameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    padding: theme.spacing.lg,
-    gap: theme.spacing.md,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  spacer: { width: 64 },
-  turnRow: { alignItems: 'center' },
-  timer: { paddingHorizontal: theme.spacing.xl },
-  boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    spacer: { width: 64 },
+    turnRow: { alignItems: 'center' },
+    timer: { paddingHorizontal: spacing.xl },
+    boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  });

@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import { theme } from '@/theme';
+import { radius, spacing, typography } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -14,13 +16,6 @@ interface ButtonProps {
   testID?: string;
 }
 
-const VARIANT_BG: Record<Variant, string> = {
-  primary: theme.colors.primary,
-  secondary: theme.colors.surfaceAlt,
-  danger: theme.colors.danger,
-  ghost: 'transparent',
-};
-
 export function Button({
   label,
   onPress,
@@ -30,6 +25,14 @@ export function Button({
   style,
   testID,
 }: ButtonProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const variantBg: Record<Variant, string> = {
+    primary: colors.primary,
+    secondary: colors.surfaceAlt,
+    danger: colors.danger,
+    ghost: 'transparent',
+  };
   const isDisabled = disabled || loading;
   return (
     <Pressable
@@ -38,7 +41,7 @@ export function Button({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
-        { backgroundColor: VARIANT_BG[variant] },
+        { backgroundColor: variantBg[variant] },
         variant === 'ghost' && styles.ghost,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
@@ -46,7 +49,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={theme.colors.text} />
+        <ActivityIndicator color={colors.text} />
       ) : (
         <Text style={[styles.label, variant === 'ghost' && styles.ghostLabel]}>{label}</Text>
       )}
@@ -54,20 +57,21 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    height: 52,
-    borderRadius: theme.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.lg,
-  },
-  ghost: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
-  disabled: { opacity: 0.5 },
-  label: { ...theme.typography.h3, color: theme.colors.text },
-  ghostLabel: { color: theme.colors.textMuted },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    base: {
+      height: 52,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+    },
+    ghost: {
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+    disabled: { opacity: 0.5 },
+    label: { ...typography.h3, color: colors.text },
+    ghostLabel: { color: colors.textMuted },
+  });

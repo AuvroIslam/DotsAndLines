@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { theme } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 interface TurnTimerBarProps {
   fraction: number; // 1 → full time remaining, 0 → expired
@@ -11,6 +11,8 @@ interface TurnTimerBarProps {
 
 /** A shrinking progress bar visualizing the current turn's remaining time. */
 export function TurnTimerBar({ fraction, color }: TurnTimerBarProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const width = useSharedValue(fraction);
 
   useEffect(() => {
@@ -23,18 +25,19 @@ export function TurnTimerBar({ fraction, color }: TurnTimerBarProps) {
   return (
     <View style={styles.track}>
       <Animated.View
-        style={[styles.fill, { backgroundColor: danger ? theme.colors.danger : color }, style]}
+        style={[styles.fill, { backgroundColor: danger ? colors.danger : color }, style]}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  track: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.surfaceAlt,
-    overflow: 'hidden',
-  },
-  fill: { height: '100%', borderRadius: 3 },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    track: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.surfaceAlt,
+      overflow: 'hidden',
+    },
+    fill: { height: '100%', borderRadius: 3 },
+  });

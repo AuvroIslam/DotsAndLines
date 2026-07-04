@@ -2,7 +2,8 @@ import { StyleSheet, Switch, View } from 'react-native';
 
 import { Card, Screen, SegmentedControl, Typography } from '@/components/ui';
 import { useAuthStore, useSettingsStore } from '@/store';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors } from '@/theme/useTheme';
 
 function ToggleRow({
   label,
@@ -13,14 +14,15 @@ function ToggleRow({
   value: boolean;
   onValueChange: (v: boolean) => void;
 }) {
+  const colors = useThemeColors();
   return (
     <View style={styles.row}>
       <Typography variant="body">{label}</Typography>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
-        thumbColor={theme.colors.text}
+        trackColor={{ true: colors.primary, false: colors.border }}
+        thumbColor={colors.text}
       />
     </View>
   );
@@ -77,6 +79,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing.xs,
+    paddingVertical: spacing.xs,
   },
 });

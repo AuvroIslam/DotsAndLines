@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Typography } from '@/components/ui';
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 /**
  * Splash / landing at "/". The root layout's auth gate immediately redirects to
@@ -9,6 +11,8 @@ import { theme } from '@/theme';
  * for a frame during cold start.
  */
 export default function Splash() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.container}>
       <View style={styles.logo}>
@@ -22,21 +26,22 @@ export default function Splash() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.bg,
-    gap: theme.spacing.sm,
-  },
-  logo: {
-    width: 96,
-    height: 96,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: theme.spacing.md,
-  },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.bg,
+      gap: spacing.sm,
+    },
+    logo: {
+      width: 96,
+      height: 96,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.md,
+    },
+  });

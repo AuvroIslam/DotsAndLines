@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { theme } from '@/theme';
+import { spacing as themeSpacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState, Line } from '@/types';
 import { boxToKey, lineToKey } from '@/utils';
 
@@ -18,7 +19,7 @@ interface GameBoardProps {
 const DOT = 10;
 const LINE_THICKNESS = 7;
 const MAX_BOARD = 420;
-const MARGIN = theme.spacing.lg;
+const MARGIN = themeSpacing.lg;
 
 /**
  * Renders the playfield purely from engine state: computes pixel geometry for an
@@ -27,6 +28,8 @@ const MARGIN = theme.spacing.lg;
 export function GameBoard({ game, pendingLines, interactive, onDraw }: GameBoardProps) {
   const { width } = useWindowDimensions();
   const n = game.board.size;
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { boardPx, pad, spacing } = useMemo(() => {
     const boardPxLocal = Math.min(width - MARGIN * 2, MAX_BOARD);
@@ -41,7 +44,7 @@ export function GameBoard({ game, pendingLines, interactive, onDraw }: GameBoard
   });
 
   const colorOf = (playerId: string | undefined): string =>
-    playerId ? (game.players[playerId]?.color ?? theme.colors.primary) : theme.colors.primary;
+    playerId ? (game.players[playerId]?.color ?? colors.primary) : colors.primary;
 
   const labelOf = (playerId: string | undefined): string | null => {
     if (!playerId) return null;
@@ -137,13 +140,14 @@ export function GameBoard({ game, pendingLines, interactive, onDraw }: GameBoard
   );
 }
 
-const styles = StyleSheet.create({
-  board: { alignSelf: 'center', position: 'relative' },
-  dot: {
-    position: 'absolute',
-    width: DOT,
-    height: DOT,
-    borderRadius: DOT / 2,
-    backgroundColor: theme.colors.text,
-  },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    board: { alignSelf: 'center', position: 'relative' },
+    dot: {
+      position: 'absolute',
+      width: DOT,
+      height: DOT,
+      borderRadius: DOT / 2,
+      backgroundColor: colors.text,
+    },
+  });

@@ -5,7 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import { Avatar, Button, Card, Screen, TextField, Typography } from '@/components/ui';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore, useProfileStore } from '@/store';
-import { theme } from '@/theme';
+import { spacing } from '@/theme';
+import { useThemeColors } from '@/theme/useTheme';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function ProfileScreen() {
   const signOut = useAuthStore((s) => s.signOut);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const isSaving = useProfileStore((s) => s.isSaving);
+  const colors = useThemeColors();
 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [username, setUsername] = useState(profile?.username ?? '');
@@ -60,7 +62,7 @@ export default function ProfileScreen() {
         />
         <Button label="Save changes" loading={isSaving} onPress={handleSave} />
         {savedAt ? (
-          <Typography variant="caption" color={theme.colors.success}>
+          <Typography variant="caption" color={colors.success}>
             Saved!
           </Typography>
         ) : null}
@@ -78,5 +80,5 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { alignItems: 'center', gap: theme.spacing.sm },
+  header: { alignItems: 'center', gap: spacing.sm },
 });

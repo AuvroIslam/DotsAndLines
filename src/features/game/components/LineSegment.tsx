@@ -1,8 +1,8 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { theme } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 interface LineSegmentProps {
   x: number;
@@ -34,6 +34,8 @@ function LineSegmentBase({
   interactive,
   onPress,
 }: LineSegmentProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const progress = useSharedValue(drawn ? 1 : 0);
 
   useEffect(() => {
@@ -77,13 +79,14 @@ function LineSegmentBase({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { position: 'absolute' },
-  fill: { position: 'absolute', left: 0, top: 0 },
-  crossFull: { width: '100%', height: '100%' },
-  crossFullHeight: { height: '100%' },
-  crossFullWidth: { width: '100%' },
-  hint: { backgroundColor: theme.colors.dotIdle, opacity: 0.4 },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: { position: 'absolute' },
+    fill: { position: 'absolute', left: 0, top: 0 },
+    crossFull: { width: '100%', height: '100%' },
+    crossFullHeight: { height: '100%' },
+    crossFullWidth: { width: '100%' },
+    hint: { backgroundColor: colors.dotIdle, opacity: 0.4 },
+  });
 
 export const LineSegment = memo(LineSegmentBase);

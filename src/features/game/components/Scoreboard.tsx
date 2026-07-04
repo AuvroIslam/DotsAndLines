@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Typography } from '@/components/ui';
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState } from '@/types';
 
 interface ScoreboardProps {
@@ -11,6 +13,8 @@ interface ScoreboardProps {
 
 /** Per-player score chips; the active player's chip is highlighted. */
 export function Scoreboard({ game, myPlayerId }: ScoreboardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const players = game.turnOrder.map((id) => game.players[id]).filter(Boolean);
   return (
     <View style={styles.row}>
@@ -41,18 +45,19 @@ export function Scoreboard({ game, myPlayerId }: ScoreboardProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, justifyContent: 'center' },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    borderWidth: 1.5,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.surface,
-  },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  activePulse: { width: 6, height: 6, borderRadius: 3, marginLeft: 2 },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      borderWidth: 1.5,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.surface,
+    },
+    dot: { width: 12, height: 12, borderRadius: 6 },
+    activePulse: { width: 6, height: 6, borderRadius: 3, marginLeft: 2 },
+  });

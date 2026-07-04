@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
-import { theme } from '@/theme';
+import { radius, spacing } from '@/theme';
+import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 import { Typography } from './Typography';
 
@@ -10,6 +12,8 @@ interface TextFieldProps extends TextInputProps {
 }
 
 export function TextField({ label, error, style, ...rest }: TextFieldProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.wrapper}>
       {label ? (
@@ -18,12 +22,12 @@ export function TextField({ label, error, style, ...rest }: TextFieldProps) {
         </Typography>
       ) : null}
       <TextInput
-        placeholderTextColor={theme.colors.textMuted}
+        placeholderTextColor={colors.textMuted}
         style={[styles.input, error ? styles.inputError : null, style]}
         {...rest}
       />
       {error ? (
-        <Typography variant="caption" color={theme.colors.danger}>
+        <Typography variant="caption" color={colors.danger}>
           {error}
         </Typography>
       ) : null}
@@ -31,17 +35,18 @@ export function TextField({ label, error, style, ...rest }: TextFieldProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrapper: { gap: theme.spacing.xs },
-  input: {
-    height: 50,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: theme.spacing.md,
-    color: theme.colors.text,
-    fontSize: 15,
-  },
-  inputError: { borderColor: theme.colors.danger },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    wrapper: { gap: spacing.xs },
+    input: {
+      height: 50,
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      color: colors.text,
+      fontSize: 15,
+    },
+    inputError: { borderColor: colors.danger },
+  });
