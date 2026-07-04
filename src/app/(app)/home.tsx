@@ -39,11 +39,10 @@ export default function HomeScreen() {
         onPress={() => router.push(Routes.localGame)}
       />
       <Button
-        label="Create Room"
+        label="Custom Room"
         variant="secondary"
         onPress={() => router.push(Routes.createRoom)}
       />
-      <Button label="Join Room" variant="secondary" onPress={() => router.push(Routes.joinRoom)} />
 
       <Typography variant="h2" style={styles.sectionTop}>
         Social

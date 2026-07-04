@@ -5,7 +5,6 @@ export const Routes = {
   friends: '/(app)/friends',
   friendRequests: '/(app)/friend-requests',
   createRoom: '/(app)/create-room',
-  joinRoom: '/(app)/join-room',
   lobby: (roomId: string) => ({ pathname: '/(app)/lobby/[roomId]', params: { roomId } }) as const,
   game: (gameId: string) => ({ pathname: '/(app)/game/[gameId]', params: { gameId } }) as const,
   history: '/(app)/history',
