@@ -22,6 +22,8 @@ export function useRandomMatchmaking() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ticketUnsub = useRef<(() => void) | null>(null);
   const navigated = useRef(false);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
 
   const teardown = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -89,7 +91,17 @@ export function useRandomMatchmaking() {
     if (profile) void matchmakingRepository.dequeue(profile.uid);
   }, [profile, teardown]);
 
-  useEffect(() => () => teardown(), [teardown]);
+  useEffect(
+    () => () => {
+      teardown();
+      // Unmounting mid-search (navigating away, dev reload, etc.) must not
+      // leave an orphaned ticket in the queue — it would otherwise block all
+      // future matchmaking, since other clients defer to the oldest ticket.
+      const uid = profileRef.current?.uid;
+      if (uid) void matchmakingRepository.dequeue(uid);
+    },
+    [teardown],
+  );
 
   return { searching, start, cancel };
 }

@@ -26,7 +26,7 @@ export default function HomeScreen() {
 
       <Typography variant="h2">Play</Typography>
       <Button
-        label={matchmaking.searching ? 'Searching for opponent…' : 'Random Match (1v1)'}
+        label={matchmaking.searching ? 'Searching for opponent…' : 'Online Match'}
         loading={matchmaking.searching}
         onPress={() => matchmaking.start(3)}
       />

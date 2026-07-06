@@ -11,6 +11,11 @@ import { RtdbPaths } from './paths';
 
 const log = createLogger('MM');
 
+// Tickets older than this are treated as abandoned (app closed/backgrounded
+// mid-search without cleanup) and excluded from opponent selection so they
+// can't permanently block real players from pairing.
+const MAX_TICKET_AGE_MS = 60_000;
+
 type QueuedTicket = MatchmakingTicket & { gameId?: string };
 
 /**
@@ -74,8 +79,15 @@ export const matchmakingRepository = {
       tickets: tickets.map((t) => ({ uid: t.uid, board: t.boardSize, gameId: t.gameId ?? null })),
     });
 
+    const now = Date.now();
     const opponent = tickets
-      .filter((t) => t.uid !== me.uid && !t.gameId && t.boardSize === me.boardSize)
+      .filter(
+        (t) =>
+          t.uid !== me.uid &&
+          !t.gameId &&
+          t.boardSize === me.boardSize &&
+          now - t.enqueuedAt < MAX_TICKET_AGE_MS,
+      )
       .sort((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
 
     if (!opponent) {
