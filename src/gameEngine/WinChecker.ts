@@ -14,12 +14,16 @@ export class WinChecker {
 
   static getResult(state: GameState): GameResult {
     const scores = ScoreManager.computeScores(state.board, state.turnOrder);
+    // Eliminated players can never win, even if they hold the top score from
+    // boxes claimed before they left — only currently-active players compete.
+    const eligible = state.turnOrder.filter((id) => !state.players[id]?.isEliminated);
+    const candidates = eligible.length > 0 ? eligible : state.turnOrder;
     let highest = -1;
-    for (const id of state.turnOrder) {
+    for (const id of candidates) {
       const s = scores[id] ?? 0;
       if (s > highest) highest = s;
     }
-    const winners = state.turnOrder.filter((id) => (scores[id] ?? 0) === highest);
+    const winners = candidates.filter((id) => (scores[id] ?? 0) === highest);
     return {
       phase: 'finished',
       winners,

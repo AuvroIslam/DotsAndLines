@@ -46,6 +46,18 @@ export interface Player {
   displayName: string;
   color: string;
   isConnected: boolean;
+  /** Permanently out of the match (forfeited or timed out) — distinct from a transient `isConnected` blip. */
+  isEliminated: boolean;
+  /** Server timestamp of the current disconnect episode, or null while connected. */
+  disconnectedAt: number | null;
+  /**
+   * Server timestamp of this player's last heartbeat, refreshed periodically
+   * while connected. A stale value is what actually detects a silent network
+   * loss (see `HEARTBEAT_STALE_MS`) — `onDisconnect`/`isConnected` alone can
+   * take a long time to notice one, since it depends on the server's own
+   * connection-timeout rather than an immediate signal.
+   */
+  lastSeenAt: number | null;
   score: number;
 }
 
@@ -74,6 +86,8 @@ export interface GameResult {
   winners: PlayerId[];
   isDraw: boolean;
   scores: Record<PlayerId, number>;
+  /** Set when the game ended early via forfeit/disconnect-timeout rather than a completed board. */
+  reason?: 'forfeit';
 }
 
 /** Full game snapshot as stored in Realtime Database. */

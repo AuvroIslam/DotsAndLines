@@ -32,7 +32,9 @@ export class GameManager {
     const now = params.now ?? Date.now();
     const sorted = [...params.players].sort((a, b) => a.index - b.index);
     const players: Record<PlayerId, Player> = {};
-    for (const p of sorted) players[p.id] = { ...p, score: 0 };
+    for (const p of sorted) {
+      players[p.id] = { ...p, score: 0, isEliminated: false, disconnectedAt: null, lastSeenAt: now };
+    }
     const turnOrder = sorted.map((p) => p.id);
 
     return {
@@ -75,6 +77,7 @@ export class GameManager {
       state.turnOrder,
       playerId,
       completedBoxes.length,
+      GameManager.activePlayerIds(state.turnOrder, state.players),
     );
 
     const scores = ScoreManager.computeScores(board, state.turnOrder);
@@ -109,11 +112,74 @@ export class GameManager {
    */
   static skipTurn(state: GameState, now: number = Date.now()): GameState {
     if (state.phase !== 'playing') return state;
-    const nextTurn = TurnManager.next(state.turnOrder, state.currentTurn);
+    const nextTurn = TurnManager.next(
+      state.turnOrder,
+      state.currentTurn,
+      GameManager.activePlayerIds(state.turnOrder, state.players),
+    );
     return { ...state, currentTurn: nextTurn, turnStartedAt: now, updatedAt: now };
   }
 
   static isGameOver(state: GameState): boolean {
     return WinChecker.isGameOver(state);
+  }
+
+  /**
+   * Permanently remove `playerId` from play (explicit leave, or a disconnect
+   * grace period elapsing). Ends the game immediately if at most one active
+   * player remains — which is why a 2-player game resolves as an instant win
+   * for the other side, with no special-casing by player count. Otherwise the
+   * game continues and turn rotation skips the eliminated player from here on.
+   */
+  static forfeit(state: GameState, playerId: PlayerId, now: number = Date.now()): GameState {
+    if (state.phase !== 'playing') return state;
+    const player = state.players[playerId];
+    if (!player || player.isEliminated) return state;
+
+    const players: Record<PlayerId, Player> = {
+      ...state.players,
+      [playerId]: { ...player, isEliminated: true, isConnected: false },
+    };
+    const remaining = GameManager.activePlayerIds(state.turnOrder, players);
+
+    if (remaining.length <= 1) {
+      // The board hasn't changed, so each player's score is already current —
+      // no need to re-derive it from board.boxes via ScoreManager.
+      const scores: Record<PlayerId, number> = {};
+      for (const id of state.turnOrder) scores[id] = players[id]!.score;
+
+      return {
+        ...state,
+        players,
+        phase: 'finished',
+        result: {
+          phase: 'finished',
+          winners: remaining,
+          isDraw: remaining.length === 0,
+          scores,
+          reason: 'forfeit',
+        },
+        updatedAt: now,
+      };
+    }
+
+    const isForfeitersTurn = state.currentTurn === playerId;
+    return {
+      ...state,
+      players,
+      currentTurn: isForfeitersTurn
+        ? TurnManager.next(state.turnOrder, playerId, remaining)
+        : state.currentTurn,
+      turnStartedAt: isForfeitersTurn ? now : state.turnStartedAt,
+      updatedAt: now,
+    };
+  }
+
+  /** Players in `turnOrder` who haven't been eliminated, per `players`. */
+  private static activePlayerIds(
+    turnOrder: PlayerId[],
+    players: Record<PlayerId, Player>,
+  ): PlayerId[] {
+    return turnOrder.filter((id) => !players[id]?.isEliminated);
   }
 }
