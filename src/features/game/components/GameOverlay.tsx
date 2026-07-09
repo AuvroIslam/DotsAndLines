@@ -22,14 +22,19 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
   if (!result) return null;
 
   const iWon = !!myPlayerId && result.winners.includes(myPlayerId);
+  const isForfeit = result.reason === 'forfeit';
   const winnerLabel = result.winners.map((id) => game.players[id]?.displayName).filter(Boolean).join(', ');
   const title = result.isDraw
     ? "It's a Draw!"
     : myPlayerId === null
       ? `${winnerLabel} Wins!`
       : iWon
-        ? 'You Win! 🎉'
-        : 'You Lose';
+        ? isForfeit
+          ? 'Opponent Forfeited — You Win!'
+          : 'You Win! 🎉'
+        : isForfeit
+          ? 'You Forfeited'
+          : 'You Lose';
   return (
     <Animated.View entering={FadeIn.duration(250)} style={styles.backdrop}>
       <View style={styles.card}>
