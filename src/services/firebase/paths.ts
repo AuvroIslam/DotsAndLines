@@ -15,6 +15,7 @@ export const RtdbPaths = {
   game: (gameId: string) => `games/${gameId}`,
   gameBoard: (gameId: string) => `games/${gameId}/board`,
   gameLine: (gameId: string, lineKey: string) => `games/${gameId}/board/lines/${lineKey}`,
+  gamePlayer: (gameId: string, playerId: string) => `games/${gameId}/players/${playerId}`,
   rooms: 'rooms',
   room: (roomId: string) => `rooms/${roomId}`,
   roomMembers: (roomId: string) => `rooms/${roomId}/members`,

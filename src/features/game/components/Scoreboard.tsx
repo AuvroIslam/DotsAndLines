@@ -33,7 +33,7 @@ export function Scoreboard({ game, myPlayerId }: ScoreboardProps) {
             <View>
               <Typography variant="caption" muted>
                 {p!.uid === myPlayerId || p!.id === myPlayerId ? 'You' : p!.displayName}
-                {!p!.isConnected ? ' ·offline' : ''}
+                {p!.isEliminated ? ' · left' : !p!.isConnected ? ' ·offline' : ''}
               </Typography>
               <Typography variant="h3">{p!.score}</Typography>
             </View>

@@ -1,5 +1,6 @@
-import { onDisconnect, onValue, ref, serverTimestamp, set } from 'firebase/database';
+import { onValue, ref, serverTimestamp } from 'firebase/database';
 
+import { trackRefConnection } from './connectionTracking';
 import { realtimeDb } from './config';
 import { RtdbPaths } from './paths';
 
@@ -17,20 +18,11 @@ export const presenceRepository = {
   /** Begin tracking presence for `uid`. Returns an unsubscribe/teardown fn. */
   track(uid: string): () => void {
     const userStatusRef = ref(realtimeDb, RtdbPaths.presence(uid));
-    const connectedRef = ref(realtimeDb, '.info/connected');
-
-    const unsub = onValue(connectedRef, async (snap) => {
-      if (snap.val() === false) return;
-      // Register the offline write first so it survives an abrupt disconnect.
-      await onDisconnect(userStatusRef).set({ isOnline: false, lastSeen: serverTimestamp() });
-      await set(userStatusRef, { isOnline: true, lastSeen: serverTimestamp() });
-    });
-
-    return () => {
-      unsub();
-      // Best-effort immediate offline on graceful teardown.
-      void set(userStatusRef, { isOnline: false, lastSeen: serverTimestamp() });
-    };
+    return trackRefConnection(
+      userStatusRef,
+      { isOnline: true, lastSeen: serverTimestamp() },
+      { isOnline: false, lastSeen: serverTimestamp() },
+    );
   },
 
   subscribe(uid: string, cb: (state: PresenceState | null) => void): () => void {
