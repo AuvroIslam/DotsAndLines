@@ -18,5 +18,7 @@ module.exports = {
       { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
     ],
   },
-  ignorePatterns: ['/dist/*', '/node_modules/*', '/.expo/*'],
+  // `functions/` is a separate package with its own toolchain (Admin SDK,
+  // Node runtime); it is linted/built from within that directory.
+  ignorePatterns: ['/dist/*', '/node_modules/*', '/.expo/*', '/functions/*'],
 };

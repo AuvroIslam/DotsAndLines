@@ -11,13 +11,31 @@
     },
 
     "games": {
+      ".indexOn": ["phase"],
       "$gameId": {
         ".read": "auth != null",
         ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
+
+        "phase": {
+          ".validate": "newData.val() === 'waiting' || newData.val() === 'playing'"
+        },
+        "result": {
+          ".validate": false
+        },
+
         "players": {
           "$playerId": {
             "isConnected": {
               ".validate": "newData.isBoolean()"
+            },
+            "isEliminated": {
+              ".validate": "newData.isBoolean() && newData.val() === false"
+            },
+            "disconnectedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "lastSeenAt": {
+              ".validate": "newData.isNumber()"
             }
           }
         },

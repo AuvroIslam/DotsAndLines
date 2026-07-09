@@ -1,0 +1,25 @@
+{
+  "name": "dots-and-boxes-functions",
+  "description": "Server-authoritative game authority: disconnect forfeit, normal-completion finalize, and forfeit/skip callables. Reuses the client's pure game engine so client and server rules stay identical.",
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=lib/index.js --external:firebase-admin --external:firebase-functions --tsconfig=tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "serve": "npm run build && firebase emulators:start --only functions,database",
+    "deploy": "npm run build && firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.24.0",
+    "firebase-tools": "^15.22.4",
+    "typescript": "^5.9.2"
+  },
+  "private": true
+}
