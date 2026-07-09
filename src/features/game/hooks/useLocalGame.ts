@@ -52,6 +52,9 @@ export function useLocalGame(): UseLocalGameReturn {
         displayName: p.displayName,
         color: p.color,
         isConnected: true,
+        isEliminated: false,
+        disconnectedAt: null,
+        lastSeenAt: null,
         score: 0,
       })),
     });

@@ -1,4 +1,4 @@
-import type { BoardState, GameState } from '@/types';
+import type { BoardState, GameState, Player, PlayerId } from '@/types';
 
 /**
  * Realtime Database omits empty objects/arrays (they read back as `null`).
@@ -17,12 +17,34 @@ export function normalizeBoard(
   };
 }
 
+/**
+ * Games written before `isEliminated`/`disconnectedAt`/`lastSeenAt` existed
+ * have those keys missing entirely (not `false`/`null` — just absent), so
+ * default them here rather than let `undefined` leak into code that assumes
+ * the type's booleans/numbers.
+ */
+export function normalizePlayers(
+  raw: Record<PlayerId, Player> | null | undefined,
+): Record<PlayerId, Player> {
+  if (!raw) return {};
+  const players: Record<PlayerId, Player> = {};
+  for (const [id, p] of Object.entries(raw)) {
+    players[id] = {
+      ...p,
+      isEliminated: p.isEliminated ?? false,
+      disconnectedAt: p.disconnectedAt ?? null,
+      lastSeenAt: p.lastSeenAt ?? null,
+    };
+  }
+  return players;
+}
+
 export function normalizeGame(raw: GameState | null | undefined): GameState | null {
   if (!raw) return null;
   return {
     ...raw,
     board: normalizeBoard(raw.board, raw.board?.size ?? 3),
-    players: raw.players ?? {},
+    players: normalizePlayers(raw.players),
     turnOrder: raw.turnOrder ?? [],
     result: raw.result ?? null,
   };

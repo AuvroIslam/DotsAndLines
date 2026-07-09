@@ -65,6 +65,9 @@ function buildPlayer(ticket: MatchmakingTicket, index: 0 | 1): Player {
     displayName: ticket.displayName,
     color: playerColors[index]!,
     isConnected: true,
+    isEliminated: false,
+    disconnectedAt: null,
+    lastSeenAt: null,
     score: 0,
   };
 }
