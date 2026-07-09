@@ -12,6 +12,7 @@ export interface LiveGame {
   connection: ReturnType<typeof useGameStore.getState>['connection'];
   pendingLines: Set<string>;
   makeMove: (line: Line) => void;
+  forfeit: () => Promise<void>;
 }
 
 /**
@@ -28,6 +29,7 @@ export function useLiveGame(gameId: string): LiveGame {
   const connection = useGameStore((s) => s.connection);
   const pendingLines = useGameStore((s) => s.pendingLines);
   const makeMove = useGameStore((s) => s.makeMove);
+  const forfeit = useGameStore((s) => s.forfeit);
 
   useEffect(() => {
     if (!uid) return;
@@ -47,5 +49,6 @@ export function useLiveGame(gameId: string): LiveGame {
     connection,
     pendingLines,
     makeMove: (line) => void makeMove(line),
+    forfeit,
   };
 }

@@ -42,32 +42,40 @@ export const gameRepository = {
     return { ok: true, state: games.get(gameId)! };
   },
 
-  /** Advance the turn when the timer expires (validated against the current turn). */
-  async skipTurn(gameId: string, expectedTurn: PlayerId): Promise<boolean> {
-    const now = Date.now();
-    const tx = games.transaction(gameId, (current) => {
-      if (!current || current.phase !== 'playing') return undefined;
-      if (current.currentTurn !== expectedTurn) return undefined; // already moved on
-      return GameManager.skipTurn(current, now);
-    });
-    return tx.committed;
+  /** No real network here, so just reflect connected/disconnected synchronously. */
+  trackConnection(gameId: string, playerId: PlayerId): () => void {
+    const setConnected = (isConnected: boolean) => {
+      games.transaction(gameId, (current) => {
+        if (!current?.players[playerId]) return undefined;
+        return {
+          ...current,
+          players: {
+            ...current.players,
+            [playerId]: {
+              ...current.players[playerId]!,
+              isConnected,
+              disconnectedAt: isConnected ? null : Date.now(),
+              lastSeenAt: isConnected ? Date.now() : current.players[playerId]!.lastSeenAt,
+            },
+          },
+          updatedAt: Date.now(),
+        };
+      });
+    };
+    setConnected(true);
+    return () => setConnected(false);
   },
 
-  /** Mark a player's connection state (used by reconnect / presence in-game). */
-  async setPlayerConnection(
-    gameId: string,
-    playerId: PlayerId,
-    isConnected: boolean,
-  ): Promise<void> {
+  /** Refresh this player's heartbeat (see the firebase impl's doc comment for why). */
+  async heartbeat(gameId: string, playerId: PlayerId): Promise<void> {
     games.transaction(gameId, (current) => {
-      if (!current) return undefined;
+      if (!current?.players[playerId]) return undefined;
       return {
         ...current,
         players: {
           ...current.players,
-          [playerId]: { ...current.players[playerId]!, isConnected },
+          [playerId]: { ...current.players[playerId]!, lastSeenAt: Date.now() },
         },
-        updatedAt: Date.now(),
       };
     });
   },

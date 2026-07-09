@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { GameManager } from '@/gameEngine';
-import { gameRepository } from '@/services/firebase';
+import { gameFunctions, gameRepository } from '@/services/firebase';
 import type { GameState, Line, Player, PlayerId } from '@/types';
 import { lineToKey } from '@/utils';
 
@@ -20,6 +20,7 @@ interface GameStoreState {
   connect: (gameId: string, uid: string) => void;
   disconnect: () => void;
   makeMove: (line: Line) => Promise<void>;
+  forfeit: () => Promise<void>;
   setConnection: (status: ConnectionStatus) => void;
 }
 
@@ -110,6 +111,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       const fresh = await gameRepository.getGame(gameId);
       set({ game: fresh, pendingLines: new Set(), error: 'move_rejected' });
     }
+  },
+
+  forfeit: async () => {
+    const { gameId, myPlayerId } = get();
+    if (!gameId || !myPlayerId) return;
+    // Server-authoritative: the client only requests the forfeit; the Cloud
+    // Function is the sole writer of the resulting terminal state.
+    await gameFunctions.forfeit(gameId);
   },
 
   setConnection: (status) => set({ connection: status }),

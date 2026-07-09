@@ -6,6 +6,7 @@ export { friendRepository } from './friendRepository';
 export { matchHistoryRepository } from './matchHistoryRepository';
 export { gameRepository } from './gameRepository';
 export type { ApplyMoveResult } from './gameRepository';
+export { gameFunctions } from './gameFunctions';
 export { roomRepository } from './roomRepository';
 export { matchmakingRepository } from './matchmakingRepository';
 export { presenceRepository } from './presenceRepository';

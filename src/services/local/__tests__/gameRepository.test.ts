@@ -1,19 +1,7 @@
 import { GameManager } from '@/gameEngine';
-import type { Player } from '@/types';
+import { players } from '@/testUtils/players';
 
 import { gameRepository } from '../gameRepository';
-
-function players(n: number): Player[] {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `P${i + 1}`,
-    uid: `uid${i + 1}`,
-    index: i as Player['index'],
-    displayName: `Player ${i + 1}`,
-    color: '#fff',
-    isConnected: true,
-    score: 0,
-  }));
-}
 
 describe('local gameRepository', () => {
   it('creates and fetches a game', async () => {
@@ -66,23 +54,19 @@ describe('local gameRepository', () => {
     unsub();
   });
 
-  it('skipTurn only advances when the expected turn still matches', async () => {
-    const game = GameManager.create({ id: 'g4', mode: 'friend', size: 3, players: players(2) });
-    await gameRepository.createGame(game);
-
-    expect(await gameRepository.skipTurn('g4', 'P2')).toBe(false); // wrong expected turn
-    expect(await gameRepository.skipTurn('g4', 'P1')).toBe(true);
-    expect((await gameRepository.getGame('g4'))?.currentTurn).toBe('P2');
-  });
-
-  it('setPlayerConnection patches only the target player', async () => {
+  it('trackConnection marks the player online, then offline on teardown', async () => {
     const game = GameManager.create({ id: 'g5', mode: 'friend', size: 3, players: players(2) });
     await gameRepository.createGame(game);
 
-    await gameRepository.setPlayerConnection('g5', 'P2', false);
-    const updated = await gameRepository.getGame('g5');
-    expect(updated?.players.P2?.isConnected).toBe(false);
+    const teardown = gameRepository.trackConnection('g5', 'P2');
+    let updated = await gameRepository.getGame('g5');
+    expect(updated?.players.P2?.isConnected).toBe(true);
     expect(updated?.players.P1?.isConnected).toBe(true);
+
+    teardown();
+    updated = await gameRepository.getGame('g5');
+    expect(updated?.players.P2?.isConnected).toBe(false);
+    expect(updated?.players.P2?.disconnectedAt).not.toBeNull();
   });
 
   it('deleteGame removes the game', async () => {
@@ -90,5 +74,17 @@ describe('local gameRepository', () => {
     await gameRepository.createGame(game);
     await gameRepository.deleteGame('g6');
     expect(await gameRepository.getGame('g6')).toBeNull();
+  });
+
+  describe('heartbeat', () => {
+    it('refreshes only the target player’s lastSeenAt', async () => {
+      const game = GameManager.create({ id: 'g14', mode: 'friend', size: 3, players: players(2) });
+      await gameRepository.createGame(game);
+
+      await gameRepository.heartbeat('g14', 'P2');
+      const updated = await gameRepository.getGame('g14');
+      expect(updated?.players.P2?.lastSeenAt).not.toBeNull();
+      expect(updated?.players.P1?.lastSeenAt).toBe(game.players.P1?.lastSeenAt);
+    });
   });
 });

@@ -7,6 +7,8 @@ import { randomId } from '@/utils';
 
 function outcomeFor(game: GameState, myPlayerId: string): MatchOutcome {
   const result = game.result!;
+  // No-contest: everyone was eliminated, so nobody won or lost.
+  if (result.winners.length === 0) return 'draw';
   if (result.isDraw && result.winners.includes(myPlayerId)) return 'draw';
   return result.winners.includes(myPlayerId) ? 'win' : 'loss';
 }

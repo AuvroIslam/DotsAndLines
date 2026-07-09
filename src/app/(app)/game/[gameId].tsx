@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Loader, Typography } from '@/components/ui';
@@ -8,11 +8,14 @@ import {
   ConnectionBanner,
   GameBoard,
   GameOverlay,
+  PeerDisconnectBanner,
   Scoreboard,
   TurnTimerBar,
   useConnectionMonitor,
   useLiveGame,
   useMatchRecorder,
+  usePeerDisconnectStatus,
+  useTrackPlayerConnection,
   useTurnTimer,
 } from '@/features/game';
 import { Routes } from '@/navigation/routes';
@@ -29,10 +32,13 @@ export default function GameScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const live = useLiveGame(gameId);
-  const { game, isMyTurn, currentPlayer, connection, pendingLines, makeMove, myPlayerId } = live;
+  const { game, isMyTurn, currentPlayer, connection, pendingLines, makeMove, myPlayerId, forfeit } =
+    live;
   const { fraction } = useTurnTimer(game, isMyTurn);
   useConnectionMonitor(!!game);
   useMatchRecorder(game, uid, myPlayerId);
+  useTrackPlayerConnection(gameId, myPlayerId);
+  const { pendingForfeits } = usePeerDisconnectStatus(game, myPlayerId, connection);
 
   // Feedback driven by authoritative board deltas, so every player feels moves.
   const prevLines = useRef(0);
@@ -62,20 +68,45 @@ export default function GameScreen() {
 
   if (!game) return <Loader message="Joining game…" />;
 
+  const handleLeave = () => {
+    if (!myPlayerId || game.phase !== 'playing') {
+      router.replace(Routes.home);
+      return;
+    }
+    Alert.alert('Leave game?', 'Your opponent(s) will win.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await forfeit();
+            router.replace(Routes.home);
+          })();
+        },
+      },
+    ]);
+  };
+
+  const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
   const turnLabel =
     game.phase === 'finished'
       ? 'Game over'
-      : isMyTurn
-        ? 'Your turn'
-        : `${currentPlayer?.displayName ?? 'Opponent'}'s turn`;
+      : iAmEliminated
+        ? 'You left — watching'
+        : isMyTurn
+          ? 'Your turn'
+          : `${currentPlayer?.displayName ?? 'Opponent'}'s turn`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Button label="Leave" variant="ghost" onPress={() => router.replace(Routes.home)} />
+        <Button label="Leave" variant="ghost" onPress={handleLeave} />
         <ConnectionBanner status={connection} />
         <View style={styles.spacer} />
       </View>
+
+      <PeerDisconnectBanner game={game} pendingForfeits={pendingForfeits} />
 
       <Scoreboard game={game} myPlayerId={myPlayerId} />
 

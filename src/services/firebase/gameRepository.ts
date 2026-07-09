@@ -1,8 +1,18 @@
-import { get, onValue, ref, remove, runTransaction, serverTimestamp, set } from 'firebase/database';
+import {
+  get,
+  onValue,
+  ref,
+  remove,
+  runTransaction,
+  serverTimestamp,
+  set,
+  update,
+} from 'firebase/database';
 
 import { GameManager } from '@/gameEngine';
 import type { GameState, Line, PlayerId } from '@/types';
 
+import { trackRefConnection } from './connectionTracking';
 import { realtimeDb } from './config';
 import { RtdbPaths } from './paths';
 import { normalizeGame } from './rtdbSerialize';
@@ -46,6 +56,13 @@ export const gameRepository = {
       if (!state) return current; // abort: nothing to play on
       const outcome = GameManager.applyMove(state, line, playerId, now);
       if (!outcome.ok) return; // abort transaction (undefined) on illegal move
+      // A client never persists a terminal state — the `finalizeGame` Cloud
+      // Function is the sole writer of `finished`/`result`. Persist the
+      // completing move but leave the phase 'playing'; the server flips it to
+      // 'finished' within ~1s (and RTDB rules reject a client 'finished' write).
+      if (outcome.state.phase === 'finished') {
+        return { ...outcome.state, phase: 'playing', result: null };
+      }
       return outcome.state;
     });
 
@@ -56,30 +73,33 @@ export const gameRepository = {
     return { ok: true, state: normalizeGame(tx.snapshot.val() as GameState)! };
   },
 
-  /** Advance the turn when the timer expires (validated against the current turn). */
-  async skipTurn(gameId: string, expectedTurn: PlayerId): Promise<boolean> {
-    const node = ref(realtimeDb, RtdbPaths.game(gameId));
-    const now = Date.now();
-    const tx = await runTransaction(node, (current: GameState | null) => {
-      const state = normalizeGame(current);
-      if (!state || state.phase !== 'playing') return current;
-      if (state.currentTurn !== expectedTurn) return current; // already moved on
-      return GameManager.skipTurn(state, now);
-    });
-    return tx.committed;
+  /**
+   * Track this client's connection for one player within one game, using the
+   * same `.info/connected` + `onDisconnect` mechanism as global presence, so a
+   * graceful disconnect (app kill) is reflected server-side with no client
+   * action needed. Also stamps an initial heartbeat immediately on (re)connect
+   * — see `heartbeat` for why that alone isn't enough. Returns a teardown for
+   * a graceful unmount.
+   */
+  trackConnection(gameId: string, playerId: PlayerId): () => void {
+    const playerRef = ref(realtimeDb, RtdbPaths.gamePlayer(gameId, playerId));
+    return trackRefConnection(
+      playerRef,
+      { isConnected: true, disconnectedAt: null, lastSeenAt: serverTimestamp() },
+      { isConnected: false, disconnectedAt: serverTimestamp() },
+    );
   },
 
-  /** Mark a player's connection state (used by reconnect / presence in-game). */
-  async setPlayerConnection(
-    gameId: string,
-    playerId: PlayerId,
-    isConnected: boolean,
-  ): Promise<void> {
-    await set(
-      ref(realtimeDb, `${RtdbPaths.game(gameId)}/players/${playerId}/isConnected`),
-      isConnected,
-    );
-    await set(ref(realtimeDb, `${RtdbPaths.game(gameId)}/updatedAt`), serverTimestamp());
+  /**
+   * Refresh this player's heartbeat. Called periodically while connected —
+   * `onDisconnect` alone can take a long time to notice a silent network loss
+   * (no graceful close for the server to react to), so peers instead judge a
+   * departure by how stale this timestamp is on their own clock.
+   */
+  async heartbeat(gameId: string, playerId: PlayerId): Promise<void> {
+    await update(ref(realtimeDb, RtdbPaths.gamePlayer(gameId, playerId)), {
+      lastSeenAt: serverTimestamp(),
+    });
   },
 
   async deleteGame(gameId: string): Promise<void> {

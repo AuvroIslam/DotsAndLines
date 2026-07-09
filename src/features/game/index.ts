@@ -3,6 +3,7 @@ export { Scoreboard } from './components/Scoreboard';
 export { TurnTimerBar } from './components/TurnTimerBar';
 export { GameOverlay } from './components/GameOverlay';
 export { ConnectionBanner } from './components/ConnectionBanner';
+export { PeerDisconnectBanner } from './components/PeerDisconnectBanner';
 
 export { useLiveGame } from './hooks/useLiveGame';
 export { useTurnTimer } from './hooks/useTurnTimer';
@@ -12,6 +13,10 @@ export { useConnectionMonitor } from './hooks/useConnectionMonitor';
 export { useMatchRecorder } from './hooks/useMatchRecorder';
 export { useLocalGame } from './hooks/useLocalGame';
 export type { LocalPlayer, UseLocalGameReturn } from './hooks/useLocalGame';
+export { useTrackPlayerConnection } from './hooks/useTrackPlayerConnection';
+export { usePeerDisconnectStatus } from './hooks/usePeerDisconnectStatus';
+export { computePendingForfeits } from './hooks/forfeitTiming';
+export type { PendingForfeit } from './hooks/forfeitTiming';
 
 export { chooseMoveAI } from './ai';
 export type { AIDifficulty } from './ai';

@@ -5,6 +5,7 @@ import { getReactNativePersistence } from 'firebase/auth';
 import { initializeAuth, getAuth, type Auth } from 'firebase/auth';
 import { getDatabase, type Database } from 'firebase/database';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions';
 
 /**
  * Firebase configuration is supplied via EXPO_PUBLIC_* env vars (see .env.example).
@@ -45,3 +46,17 @@ function createAuth(app: FirebaseApp): Auth {
 export const firebaseAuth: Auth = createAuth(firebaseApp);
 export const realtimeDb: Database = getDatabase(firebaseApp);
 export const firestore: Firestore = getFirestore(firebaseApp);
+
+/**
+ * Callable Cloud Functions host the server-authoritative game-ending actions
+ * (forfeit, turn-timeout skip). Point at the local Functions emulator when
+ * `EXPO_PUBLIC_FUNCTIONS_EMULATOR_HOST` is set (e.g. "localhost:5001") so the
+ * whole disconnect flow can be exercised without the Blaze plan.
+ */
+export const functions: Functions = getFunctions(firebaseApp, 'asia-southeast1');
+
+const functionsEmulatorHost = process.env.EXPO_PUBLIC_FUNCTIONS_EMULATOR_HOST;
+if (functionsEmulatorHost) {
+  const [host, port] = functionsEmulatorHost.split(':');
+  connectFunctionsEmulator(functions, host ?? 'localhost', Number(port ?? 5001));
+}

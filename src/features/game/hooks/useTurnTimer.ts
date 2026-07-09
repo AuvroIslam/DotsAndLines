@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { gameRepository } from '@/services/firebase';
+import { gameFunctions } from '@/services/firebase';
 import type { GameState } from '@/types';
 
 /**
  * Derives the live countdown for the active turn and auto-skips when it expires.
- * Only the *current* player's client issues the skip (guarded server-side by an
- * expected-turn check), so the timer can't be raced by every connected client.
+ * Only the *current* player's client requests the skip; the server re-validates
+ * the turn deadline against its own clock before advancing, so the timer can't
+ * be raced early by any client.
  */
 export function useTurnTimer(game: GameState | null, isMyTurn: boolean) {
   const [remainingMs, setRemainingMs] = useState(0);
@@ -25,7 +26,7 @@ export function useTurnTimer(game: GameState | null, isMyTurn: boolean) {
       setRemainingMs(remaining);
       if (remaining === 0 && isMyTurn && skipFired.current !== turnKey) {
         skipFired.current = turnKey;
-        void gameRepository.skipTurn(game.id, game.currentTurn);
+        void gameFunctions.skipTurn(game.id);
       }
     };
 
