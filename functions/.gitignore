@@ -1,4 +1,10 @@
 node_modules/
-lib/
 *.log
 .env
+
+# Build output. Anchored with a leading slash: an unanchored `lib/` would also
+# swallow e2e/lib/, silently dropping the test harness from the repo.
+/lib/
+
+# Bundles the e2e harness builds from src/ before each run.
+e2e/.generated/

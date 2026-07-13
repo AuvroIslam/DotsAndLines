@@ -1,6 +1,6 @@
 {
   "name": "dots-and-boxes-functions",
-  "description": "Server-authoritative game authority: disconnect forfeit, normal-completion finalize, and forfeit/skip callables. Reuses the client's pure game engine so client and server rules stay identical.",
+  "description": "Server-authoritative game authority: moves, turn timeouts, forfeits and the abandoned-game sweep. Reuses the client's pure game engine so client and server rules stay identical.",
   "engines": {
     "node": "20"
   },
@@ -8,7 +8,9 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=lib/index.js --external:firebase-admin --external:firebase-functions --tsconfig=tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "serve": "npm run build && firebase emulators:start --only functions,database",
+    "e2e:prepare": "esbuild e2e/engineEntry.ts --bundle --platform=node --format=cjs --outfile=e2e/.generated/engine.cjs --tsconfig=tsconfig.json && esbuild src/authority.ts --bundle --platform=node --format=cjs --outfile=e2e/.generated/authority.cjs --external:firebase-admin --tsconfig=tsconfig.json",
+    "e2e": "npm run build && npm run e2e:prepare && firebase emulators:exec --config ../firebase.json --project demo-dotsandlines --only functions,database,auth \"node e2e/run.cjs\"",
+    "serve": "npm run build && firebase emulators:start --config ../firebase.json --project demo-dotsandlines --only functions,database,auth",
     "deploy": "npm run build && firebase deploy --only functions"
   },
   "dependencies": {
