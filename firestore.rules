@@ -38,10 +38,27 @@ service cloud.firestore {
     // money — anyone could write themselves nine thousand wins without playing a
     // single game. Cheat-proof moves are worth very little next to a forgeable
     // win record, so the result is now recorded by the Cloud Function that
-    // finalizes the match, and clients can only read it.
+    // finalizes the match (see functions/src/recordResults.ts).
+    //
+    // The one thing a client may still do is open its *own* row on sign-up, and
+    // only at zero. `create` cannot touch a row that already exists, and update
+    // and delete are closed, so there is no path from here to a record you did
+    // not play for.
     match /statistics/{uid} {
       allow read: if isSignedIn();
-      allow write: if false;
+      allow create: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'gamesPlayed', 'wins', 'losses', 'draws',
+              'totalBoxesWon', 'winStreak', 'bestWinStreak'])
+        && request.resource.data.uid == uid
+        && request.resource.data.gamesPlayed == 0
+        && request.resource.data.wins == 0
+        && request.resource.data.losses == 0
+        && request.resource.data.draws == 0
+        && request.resource.data.totalBoxesWon == 0
+        && request.resource.data.winStreak == 0
+        && request.resource.data.bestWinStreak == 0;
+      allow update, delete: if false;
     }
 
     // Settings are private to the owner.
