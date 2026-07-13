@@ -1,4 +1,5 @@
 import { players } from '@/testUtils/players';
+import { MAX_CONSECUTIVE_MISSES } from '@/utils/constants';
 
 import { Board } from '../Board';
 import { GameManager } from '../GameManager';
@@ -83,7 +84,6 @@ describe('GameManager', () => {
       expect(next.result?.winners).toEqual(['P2']);
       expect(next.result?.isDraw).toBe(false);
       expect(next.players.P1?.isEliminated).toBe(true);
-      expect(next.players.P1?.isConnected).toBe(false);
     });
 
     it('continues a 4-player game, advancing the turn when the eliminated player held it', () => {
@@ -136,6 +136,19 @@ describe('GameManager', () => {
       expect(again).toBe(finished);
     });
 
+    it('awards the win on an explicit leave even if the other player has missed turns', () => {
+      // Quitting is a concession, so it is not subject to the "still playing"
+      // check that a timeout elimination applies.
+      const g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const rusty = {
+        ...g,
+        players: { ...g.players, P2: { ...g.players.P2!, consecutiveMisses: 2 } },
+      };
+      const next = GameManager.forfeit(rusty, 'P1');
+      expect(next.result?.winners).toEqual(['P2']);
+      expect(next.result?.isDraw).toBe(false);
+    });
+
     it('is a no-op for an already-eliminated player', () => {
       const g = GameManager.create({ id: 'g', mode: 'friend', size: 5, players: players(4) });
       const once = GameManager.forfeit(g, 'P2');
@@ -150,6 +163,7 @@ describe('GameManager', () => {
     });
 
     it('keeps skipping the eliminated player across multiple subsequent turns', () => {
+      // (kept in the forfeit block: same elimination path, different trigger)
       let g = GameManager.create({ id: 'g', mode: 'friend', size: 5, players: players(4) });
       g = GameManager.forfeit(g, 'P2'); // not P2's turn — currentTurn stays P1
       expect(g.currentTurn).toBe('P1');
@@ -208,6 +222,96 @@ describe('GameManager', () => {
       expect(g.phase).toBe('finished');
       expect(g.result?.winners).not.toContain(leaderId);
       expect(g.result?.scores[leaderId]).toBe(leaderScoreBeforeElimination);
+    });
+  });
+
+  describe('timeoutTurn', () => {
+    it('counts a miss and passes play on, without ending the game', () => {
+      const g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const next = GameManager.timeoutTurn(g);
+      expect(next.phase).toBe('playing');
+      expect(next.players.P1?.consecutiveMisses).toBe(1);
+      expect(next.players.P1?.isEliminated).toBe(false);
+      expect(next.currentTurn).toBe('P2');
+    });
+
+    it('eliminates a player on their MAX_CONSECUTIVE_MISSES-th straight miss, and the opponent wins', () => {
+      // P1 never plays; P2 answers every turn, so P2's streak stays at 0.
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const lines = Board.getAllLines(3);
+      let li = 0;
+
+      for (let miss = 1; miss < MAX_CONSECUTIVE_MISSES; miss += 1) {
+        g = GameManager.timeoutTurn(g); // P1 misses
+        expect(g.phase).toBe('playing');
+        expect(g.players.P1?.consecutiveMisses).toBe(miss);
+
+        const out = GameManager.applyMove(g, lines[li++]!, 'P2'); // P2 plays on
+        if (out.ok) g = out.state;
+        expect(g.players.P2?.consecutiveMisses).toBe(0);
+      }
+
+      g = GameManager.timeoutTurn(g); // P1's final miss
+      expect(g.players.P1?.isEliminated).toBe(true);
+      expect(g.phase).toBe('finished');
+      expect(g.result?.reason).toBe('timeout');
+      expect(g.result?.winners).toEqual(['P2']);
+      expect(g.result?.isDraw).toBe(false);
+    });
+
+    it('playing again resets the streak, so an interrupted player is never eliminated', () => {
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const lines = Board.getAllLines(3);
+
+      // P1 misses twice (one short of elimination) across two rounds...
+      g = GameManager.timeoutTurn(g);
+      let out = GameManager.applyMove(g, lines[0]!, 'P2');
+      if (out.ok) g = out.state;
+      g = GameManager.timeoutTurn(g);
+      expect(g.players.P1?.consecutiveMisses).toBe(2);
+
+      out = GameManager.applyMove(g, lines[1]!, 'P2');
+      if (out.ok) g = out.state;
+
+      // ...then comes back and plays: the streak is wiped.
+      out = GameManager.applyMove(g, lines[2]!, 'P1');
+      expect(out.ok).toBe(true);
+      if (out.ok) g = out.state;
+      expect(g.players.P1?.consecutiveMisses).toBe(0);
+      expect(g.phase).toBe('playing');
+      expect(g.players.P1?.isEliminated).toBe(false);
+    });
+
+    it('voids the match as a no-contest when BOTH players abandon it', () => {
+      // The bug this guards: with both sides gone, whoever times out second
+      // must not be handed the win just for having missed one fewer turn.
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      for (let i = 0; i < MAX_CONSECUTIVE_MISSES * 2 && g.phase === 'playing'; i += 1) {
+        g = GameManager.timeoutTurn(g);
+      }
+
+      expect(g.phase).toBe('finished');
+      expect(g.result?.reason).toBe('timeout');
+      expect(g.result?.winners).toEqual([]); // nobody was still playing
+      expect(g.result?.isDraw).toBe(true);
+    });
+
+    it('keeps a 4-player game going when one player times out', () => {
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 5, players: players(4) });
+      for (let i = 0; i < MAX_CONSECUTIVE_MISSES; i += 1) {
+        // Only P1 ever misses: rotate back around to them each round.
+        while (g.currentTurn !== 'P1') g = GameManager.skipTurn(g);
+        g = GameManager.timeoutTurn(g);
+      }
+      expect(g.players.P1?.isEliminated).toBe(true);
+      expect(g.phase).toBe('playing'); // P2/P3/P4 are still in
+      expect(g.currentTurn).not.toBe('P1');
+    });
+
+    it('is a no-op once the game is finished', () => {
+      const g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const finished = GameManager.forfeit(g, 'P1');
+      expect(GameManager.timeoutTurn(finished)).toBe(finished);
     });
   });
 });

@@ -34,11 +34,11 @@ export default function GameScreen() {
   const live = useLiveGame(gameId);
   const { game, isMyTurn, currentPlayer, connection, pendingLines, makeMove, myPlayerId, forfeit } =
     live;
-  const { fraction } = useTurnTimer(game, isMyTurn);
+  const { fraction } = useTurnTimer(game);
   useConnectionMonitor(!!game);
   useMatchRecorder(game, uid, myPlayerId);
   useTrackPlayerConnection(gameId, myPlayerId);
-  const { pendingForfeits } = usePeerDisconnectStatus(game, myPlayerId, connection);
+  const { awayPeers } = usePeerDisconnectStatus(game, myPlayerId, connection);
 
   // Feedback driven by authoritative board deltas, so every player feels moves.
   const prevLines = useRef(0);
@@ -106,7 +106,7 @@ export default function GameScreen() {
         <View style={styles.spacer} />
       </View>
 
-      <PeerDisconnectBanner game={game} pendingForfeits={pendingForfeits} />
+      <PeerDisconnectBanner game={game} awayPeers={awayPeers} />
 
       <Scoreboard game={game} myPlayerId={myPlayerId} />
 

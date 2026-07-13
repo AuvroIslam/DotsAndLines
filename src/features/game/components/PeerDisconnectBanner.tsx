@@ -7,26 +7,28 @@ import { radius, spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState, PlayerId } from '@/types';
 
-import type { PendingForfeit } from '../hooks/forfeitTiming';
-
 interface PeerDisconnectBannerProps {
   game: GameState;
-  pendingForfeits: Record<PlayerId, PendingForfeit>;
+  awayPeers: PlayerId[];
 }
 
-/** Per-peer "disconnected — forfeiting in Ns" banner shown during the reconnect grace period. */
-export function PeerDisconnectBanner({ game, pendingForfeits }: PeerDisconnectBannerProps) {
+/**
+ * "Opponent is reconnecting…" — shown while a peer looks away.
+ *
+ * Deliberately shows no forfeit countdown: being away doesn't lose you the
+ * game, running out of turns does. Their turn clock is already on screen, and
+ * it's the thing that actually decides the match.
+ */
+export function PeerDisconnectBanner({ game, awayPeers }: PeerDisconnectBannerProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const entries = Object.entries(pendingForfeits);
-  if (entries.length === 0) return null;
+  if (awayPeers.length === 0) return null;
 
   return (
     <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={styles.banner}>
-      {entries.map(([peerId, { remainingMs }]) => (
+      {awayPeers.map((peerId) => (
         <Typography key={peerId} variant="caption" color={colors.bg}>
-          {game.players[peerId]?.displayName ?? 'Opponent'} disconnected — forfeiting in{' '}
-          {Math.ceil(remainingMs / 1000)}s
+          {game.players[peerId]?.displayName ?? 'Opponent'} is reconnecting…
         </Typography>
       ))}
     </Animated.View>

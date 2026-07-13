@@ -12,6 +12,7 @@ export function players(n: number): Player[] {
     isEliminated: false,
     disconnectedAt: null,
     lastSeenAt: null,
+    consecutiveMisses: 0,
     score: 0,
   }));
 }

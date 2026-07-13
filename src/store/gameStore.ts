@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { GameManager } from '@/gameEngine';
+import { GameManager, WinChecker } from '@/gameEngine';
 import { gameFunctions, gameRepository } from '@/services/firebase';
 import type { GameState, Line, Player, PlayerId } from '@/types';
 import { lineToKey } from '@/utils';
@@ -33,6 +33,20 @@ function resolveMyPlayerId(game: GameState | null, uid: string | null): PlayerId
 }
 
 /**
+ * Clients never *persist* a terminal state — `finalizeGame` on the server owns
+ * that — so the winning move lands as a full board that is still `playing` for
+ * the second or so until the server catches up. Rendering that literally would
+ * flash the game-over screen away and back again, so present a complete board
+ * as finished right now. The result is derived from the board by the very same
+ * engine the server runs, so this can't disagree with what lands moments later;
+ * it's a display projection, never written back.
+ */
+function withDerivedFinish(game: GameState | null): GameState | null {
+  if (!game || game.phase !== 'playing' || !WinChecker.isGameOver(game)) return game;
+  return { ...game, phase: 'finished', result: WinChecker.getResult(game) };
+}
+
+/**
  * Drives a single live game. Renders authoritative RTDB state, but applies the
  * local player's own move optimistically (via the pure engine) for zero-latency
  * feedback; the next server snapshot reconciles — confirming or silently
@@ -60,7 +74,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       error: null,
     });
 
-    unsubscribe = gameRepository.subscribe(gameId, (game) => {
+    unsubscribe = gameRepository.subscribe(gameId, (server) => {
+      const game = withDerivedFinish(server);
       set((s) => ({
         game,
         myPlayerId: resolveMyPlayerId(game, s.myUid),

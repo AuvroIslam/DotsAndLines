@@ -160,6 +160,7 @@ function buildPlayer(ticket: MatchmakingTicket, index: 0 | 1): Player {
     isEliminated: false,
     disconnectedAt: null,
     lastSeenAt: null,
+    consecutiveMisses: 0,
     score: 0,
   };
 }

@@ -23,30 +23,47 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
 
   const iWon = !!myPlayerId && result.winners.includes(myPlayerId);
   const isForfeit = result.reason === 'forfeit';
+  const isTimeout = result.reason === 'timeout';
+  // Nobody left playing — the match is void rather than won by whoever happened
+  // to run out of turns second.
+  const isNoContest = result.winners.length === 0;
   const winnerLabel = result.winners.map((id) => game.players[id]?.displayName).filter(Boolean).join(', ');
-  const title = result.isDraw
-    ? "It's a Draw!"
-    : myPlayerId === null
-      ? `${winnerLabel} Wins!`
-      : iWon
-        ? isForfeit
-          ? 'Opponent Forfeited — You Win!'
-          : 'You Win! 🎉'
-        : isForfeit
-          ? 'You Forfeited'
-          : 'You Lose';
+
+  const title = isNoContest
+    ? 'No Contest'
+    : result.isDraw
+      ? "It's a Draw!"
+      : myPlayerId === null
+        ? `${winnerLabel} Wins!`
+        : iWon
+          ? isForfeit
+            ? 'Opponent Forfeited — You Win!'
+            : isTimeout
+              ? 'Opponent Ran Out of Turns — You Win!'
+              : 'You Win! 🎉'
+          : isForfeit
+            ? 'You Forfeited'
+            : isTimeout
+              ? 'You Missed Too Many Turns'
+              : 'You Lose';
+
+  const subtitle = isNoContest
+    ? 'Both players stopped playing, so the match was voided.'
+    : !result.isDraw
+      ? `Winner: ${winnerLabel}`
+      : null;
   return (
     <Animated.View entering={FadeIn.duration(250)} style={styles.backdrop}>
       <View style={styles.card}>
         <Typography variant="h1" center>
-          {result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
+          {isNoContest ? '🚫' : result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
         </Typography>
         <Typography variant="h2" center>
           {title}
         </Typography>
-        {!result.isDraw ? (
+        {subtitle ? (
           <Typography variant="body" muted center>
-            Winner: {winnerLabel}
+            {subtitle}
           </Typography>
         ) : null}
 

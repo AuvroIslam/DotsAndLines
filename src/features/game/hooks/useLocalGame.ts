@@ -55,6 +55,7 @@ export function useLocalGame(): UseLocalGameReturn {
         isEliminated: false,
         disconnectedAt: null,
         lastSeenAt: null,
+        consecutiveMisses: 0,
         score: 0,
       })),
     });

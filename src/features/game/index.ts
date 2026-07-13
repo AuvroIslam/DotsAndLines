@@ -15,8 +15,7 @@ export { useLocalGame } from './hooks/useLocalGame';
 export type { LocalPlayer, UseLocalGameReturn } from './hooks/useLocalGame';
 export { useTrackPlayerConnection } from './hooks/useTrackPlayerConnection';
 export { usePeerDisconnectStatus } from './hooks/usePeerDisconnectStatus';
-export { computePendingForfeits } from './hooks/forfeitTiming';
-export type { PendingForfeit } from './hooks/forfeitTiming';
+export { computeAwayPeers } from './hooks/awayPeers';
 
 export { chooseMoveAI } from './ai';
 export type { AIDifficulty } from './ai';

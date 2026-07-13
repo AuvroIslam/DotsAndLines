@@ -14,18 +14,26 @@ interface ActionResult {
 }
 
 const forfeitGameFn = httpsCallable<{ gameId: string }, ActionResult>(functions, 'forfeitGame');
-const requestSkipTurnFn = httpsCallable<{ gameId: string }, ActionResult>(functions, 'requestSkipTurn');
+const requestTurnTimeoutFn = httpsCallable<{ gameId: string }, ActionResult>(
+  functions,
+  'requestTurnTimeout',
+);
 
 export const gameFunctions = {
-  /** Ask the server to forfeit the calling player (explicit leave). */
+  /** Ask the server to forfeit the calling player (explicit leave — an outright concession). */
   async forfeit(gameId: string): Promise<boolean> {
     const res = await forfeitGameFn({ gameId });
     return res.data.ok;
   },
 
-  /** Ask the server to advance the turn once the active player's timer has expired. */
-  async skipTurn(gameId: string): Promise<boolean> {
-    const res = await requestSkipTurnFn({ gameId });
+  /**
+   * Ask the server to apply an expired turn clock: the active player misses the
+   * turn, and is eliminated once they've missed enough in a row. Any player may
+   * ask; the server re-checks the deadline, so an early or duplicate call is a
+   * harmless no-op.
+   */
+  async timeoutTurn(gameId: string): Promise<boolean> {
+    const res = await requestTurnTimeoutFn({ gameId });
     return res.data.ok;
   },
 };

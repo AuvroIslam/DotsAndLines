@@ -3,46 +3,39 @@ import { useEffect, useState } from 'react';
 import type { ConnectionStatus } from '@/store';
 import type { GameState, PlayerId } from '@/types';
 
-import { computePendingForfeits, type PendingForfeit } from './forfeitTiming';
+import { computeAwayPeers } from './awayPeers';
 
 /**
- * Display-only reconnect countdown for the "opponent reconnecting… Ns" banner.
+ * Which opponents to show as "reconnecting…". Display only — an away player is
+ * never forfeited for being away; they just miss turns, and the server ends the
+ * match once someone has missed enough of them. So this hook decides nothing,
+ * and there is deliberately no countdown to show: how long an absent player has
+ * left is a function of the turn clock, not of their connection.
  *
- * This is purely cosmetic — the *server* (a scheduled Cloud Function) is the
- * sole authority that actually forfeits a disconnected player once their grace
- * period elapses. The client no longer eliminates anyone; it just mirrors the
- * same grace-period math so players see a countdown that matches the eventual
- * server verdict. When the server does forfeit, the authoritative snapshot
- * arrives via the game subscription and ends the match.
- *
- * Keeps ticking while nobody is pending, because a peer's heartbeat going stale
- * (silent network loss) is a time-based condition with no RTDB push to react to.
- * The `setState` below is a no-op (same reference) whenever nothing changed, so
- * it doesn't re-render on every tick.
- *
- * `connection` gates the whole thing: while *my own* connection isn't 'online',
- * every peer's last-known presence is frozen from my point of view, so I have no
- * reliable basis to judge anyone away — see `forfeitTiming.ts`.
+ * Keeps ticking even while nobody is away, because a peer's heartbeat going
+ * stale (a silent network loss) is a purely time-based condition with no RTDB
+ * push to react to. The state update below returns the previous array when
+ * nothing changed, so this doesn't re-render on every tick.
  */
 export function usePeerDisconnectStatus(
   game: GameState | null,
   myPlayerId: PlayerId | null,
   connection: ConnectionStatus,
-): { pendingForfeits: Record<PlayerId, PendingForfeit> } {
-  const [pendingForfeits, setPendingForfeits] = useState<Record<PlayerId, PendingForfeit>>({});
+): { awayPeers: PlayerId[] } {
+  const [awayPeers, setAwayPeers] = useState<PlayerId[]>([]);
 
   useEffect(() => {
     const tick = () => {
-      const pending = computePendingForfeits(game, myPlayerId, Date.now(), connection === 'online');
-      setPendingForfeits((prev) =>
-        Object.keys(prev).length === 0 && Object.keys(pending).length === 0 ? prev : pending,
+      const next = computeAwayPeers(game, myPlayerId, Date.now(), connection === 'online');
+      setAwayPeers((prev) =>
+        prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
       );
     };
 
     tick();
-    const id = setInterval(tick, 250);
+    const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
   }, [game, myPlayerId, connection]);
 
-  return { pendingForfeits };
+  return { awayPeers };
 }

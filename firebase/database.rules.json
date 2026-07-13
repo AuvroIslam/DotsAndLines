@@ -31,6 +31,9 @@
             "isEliminated": {
               ".validate": "newData.isBoolean() && (newData.val() === false || newData.val() === data.val())"
             },
+            "consecutiveMisses": {
+              ".validate": "newData.isNumber() && (newData.val() === 0 || newData.val() === data.val())"
+            },
             "disconnectedAt": {
               ".validate": "newData.isNumber()"
             },

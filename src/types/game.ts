@@ -58,6 +58,14 @@ export interface Player {
    * connection-timeout rather than an immediate signal.
    */
   lastSeenAt: number | null;
+  /**
+   * Turns this player has let expire back-to-back, reset to 0 the moment they
+   * play. This — not their connection state — is what ends an abandoned match:
+   * a disconnect, a backgrounded app and plain idling are indistinguishable to
+   * the server, so all three simply cost you turns. At
+   * `MAX_CONSECUTIVE_MISSES` the player is eliminated (see `GameManager`).
+   */
+  consecutiveMisses: number;
   score: number;
 }
 
@@ -81,13 +89,22 @@ export interface MoveResult {
   extraTurn: boolean;
 }
 
+/**
+ * Why a game ended early:
+ *  - `forfeit`: someone explicitly left (an outright concession).
+ *  - `timeout`: someone was eliminated for missing too many turns in a row —
+ *    which is how a disconnect, a backgrounded app, or an idle player all end.
+ * A `timeout` ending with no winners is a no-contest: everyone stopped playing.
+ */
+export type GameEndReason = 'forfeit' | 'timeout';
+
 export interface GameResult {
   phase: 'finished';
   winners: PlayerId[];
   isDraw: boolean;
   scores: Record<PlayerId, number>;
-  /** Set when the game ended early via forfeit/disconnect-timeout rather than a completed board. */
-  reason?: 'forfeit';
+  /** Set when the game ended early rather than by a completed board. */
+  reason?: GameEndReason;
 }
 
 /** Full game snapshot as stored in Realtime Database. */
