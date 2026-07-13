@@ -187,7 +187,8 @@ export default function LocalGameScreen() {
         <View style={styles.spacer} />
       </View>
 
-      <Scoreboard game={game} myPlayerId={null} />
+      {/* Local play is a single device — nobody can be offline, so no presence. */}
+      <Scoreboard game={game} presence={{}} myPlayerId={null} />
 
       <View style={styles.turnRow}>
         <Typography variant="h3" color={currentPlayer?.color}>

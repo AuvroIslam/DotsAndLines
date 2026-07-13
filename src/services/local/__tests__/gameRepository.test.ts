@@ -1,5 +1,6 @@
 import { GameManager } from '@/gameEngine';
 import { players } from '@/testUtils/players';
+import type { GamePresence } from '@/types';
 
 import { gameRepository } from '../gameRepository';
 
@@ -54,21 +55,6 @@ describe('local gameRepository', () => {
     unsub();
   });
 
-  it('trackConnection marks the player online, then offline on teardown', async () => {
-    const game = GameManager.create({ id: 'g5', mode: 'friend', size: 3, players: players(2) });
-    await gameRepository.createGame(game);
-
-    const teardown = gameRepository.trackConnection('g5', 'P2');
-    let updated = await gameRepository.getGame('g5');
-    expect(updated?.players.P2?.isConnected).toBe(true);
-    expect(updated?.players.P1?.isConnected).toBe(true);
-
-    teardown();
-    updated = await gameRepository.getGame('g5');
-    expect(updated?.players.P2?.isConnected).toBe(false);
-    expect(updated?.players.P2?.disconnectedAt).not.toBeNull();
-  });
-
   it('deleteGame removes the game', async () => {
     const game = GameManager.create({ id: 'g6', mode: 'friend', size: 3, players: players(2) });
     await gameRepository.createGame(game);
@@ -76,15 +62,54 @@ describe('local gameRepository', () => {
     expect(await gameRepository.getGame('g6')).toBeNull();
   });
 
-  describe('heartbeat', () => {
-    it('refreshes only the target player’s lastSeenAt', async () => {
+  describe('presence', () => {
+    // `subscribePresence` delivers asynchronously, exactly like RTDB's onValue.
+    const presenceOf = async (gameId: string): Promise<GamePresence> => {
+      let seen: GamePresence = {};
+      const unsub = gameRepository.subscribePresence(gameId, (p) => {
+        seen = p;
+      });
+      await Promise.resolve();
+      unsub();
+      return seen;
+    };
+
+    it('trackConnection marks the player online, then offline on teardown', async () => {
+      const game = GameManager.create({ id: 'g5', mode: 'friend', size: 3, players: players(2) });
+      await gameRepository.createGame(game);
+
+      const teardown = gameRepository.trackConnection('g5', 'P2');
+      expect((await presenceOf('g5')).P2?.isConnected).toBe(true);
+
+      teardown();
+      const after = await presenceOf('g5');
+      expect(after.P2?.isConnected).toBe(false);
+      expect(after.P2?.disconnectedAt).not.toBeNull();
+    });
+
+    it('heartbeat refreshes only the target player', async () => {
       const game = GameManager.create({ id: 'g14', mode: 'friend', size: 3, players: players(2) });
       await gameRepository.createGame(game);
 
       await gameRepository.heartbeat('g14', 'P2');
-      const updated = await gameRepository.getGame('g14');
-      expect(updated?.players.P2?.lastSeenAt).not.toBeNull();
-      expect(updated?.players.P1?.lastSeenAt).toBe(game.players.P1?.lastSeenAt);
+      const p = await presenceOf('g14');
+      expect(p.P2?.lastSeenAt).not.toBeNull();
+      expect(p.P1).toBeUndefined();
+    });
+
+    it('NEVER touches game state — the whole reason presence lives apart', async () => {
+      // Heartbeats fire every few seconds per player. If they mutated the game
+      // node, every one of them would push a fresh game snapshot to every
+      // subscriber, turning traffic from O(moves) into O(players per second).
+      const game = GameManager.create({ id: 'g15', mode: 'friend', size: 3, players: players(2) });
+      await gameRepository.createGame(game);
+      const before = await gameRepository.getGame('g15');
+
+      const teardown = gameRepository.trackConnection('g15', 'P2');
+      await gameRepository.heartbeat('g15', 'P2');
+      teardown();
+
+      expect(await gameRepository.getGame('g15')).toEqual(before);
     });
   });
 });

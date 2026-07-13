@@ -32,13 +32,22 @@ export default function GameScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const live = useLiveGame(gameId);
-  const { game, isMyTurn, currentPlayer, connection, pendingLines, makeMove, myPlayerId, forfeit } =
-    live;
+  const {
+    game,
+    presence,
+    isMyTurn,
+    currentPlayer,
+    connection,
+    pendingLines,
+    makeMove,
+    myPlayerId,
+    forfeit,
+  } = live;
   const { fraction } = useTurnTimer(game);
   useConnectionMonitor(!!game);
   useMatchRecorder(game, uid, myPlayerId);
   useTrackPlayerConnection(gameId, myPlayerId);
-  const { awayPeers } = usePeerDisconnectStatus(game, myPlayerId, connection);
+  const { awayPeers } = usePeerDisconnectStatus(game, presence, myPlayerId, connection);
 
   // Feedback driven by authoritative board deltas, so every player feels moves.
   const prevLines = useRef(0);
@@ -108,7 +117,7 @@ export default function GameScreen() {
 
       <PeerDisconnectBanner game={game} awayPeers={awayPeers} />
 
-      <Scoreboard game={game} myPlayerId={myPlayerId} />
+      <Scoreboard game={game} presence={presence} myPlayerId={myPlayerId} />
 
       <View style={styles.turnRow}>
         <Typography variant="h3" color={currentPlayer?.color}>

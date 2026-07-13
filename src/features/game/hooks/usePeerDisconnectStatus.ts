@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { ConnectionStatus } from '@/store';
-import type { GameState, PlayerId } from '@/types';
+import type { GamePresence, GameState, PlayerId } from '@/types';
 
 import { computeAwayPeers } from './awayPeers';
 
@@ -19,6 +19,7 @@ import { computeAwayPeers } from './awayPeers';
  */
 export function usePeerDisconnectStatus(
   game: GameState | null,
+  presence: GamePresence,
   myPlayerId: PlayerId | null,
   connection: ConnectionStatus,
 ): { awayPeers: PlayerId[] } {
@@ -26,7 +27,7 @@ export function usePeerDisconnectStatus(
 
   useEffect(() => {
     const tick = () => {
-      const next = computeAwayPeers(game, myPlayerId, Date.now(), connection === 'online');
+      const next = computeAwayPeers(game, presence, myPlayerId, Date.now(), connection === 'online');
       setAwayPeers((prev) =>
         prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
       );
@@ -35,7 +36,7 @@ export function usePeerDisconnectStatus(
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [game, myPlayerId, connection]);
+  }, [game, presence, myPlayerId, connection]);
 
   return { awayPeers };
 }

@@ -42,14 +42,7 @@ export class GameManager {
     const sorted = [...params.players].sort((a, b) => a.index - b.index);
     const players: Record<PlayerId, Player> = {};
     for (const p of sorted) {
-      players[p.id] = {
-        ...p,
-        score: 0,
-        isEliminated: false,
-        disconnectedAt: null,
-        lastSeenAt: now,
-        consecutiveMisses: 0,
-      };
+      players[p.id] = { ...p, score: 0, isEliminated: false, consecutiveMisses: 0 };
     }
     const turnOrder = sorted.map((p) => p.id);
 

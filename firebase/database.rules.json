@@ -11,7 +11,6 @@
     },
 
     "games": {
-      ".indexOn": ["phase"],
       "$gameId": {
         ".read": "auth != null",
         ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
@@ -25,24 +24,41 @@
 
         "players": {
           "$playerId": {
-            "isConnected": {
-              ".validate": "newData.isBoolean()"
-            },
             "isEliminated": {
               ".validate": "newData.isBoolean() && (newData.val() === false || newData.val() === data.val())"
             },
             "consecutiveMisses": {
               ".validate": "newData.isNumber() && (newData.val() === 0 || newData.val() === data.val())"
-            },
-            "disconnectedAt": {
-              ".validate": "newData.isNumber()"
-            },
-            "lastSeenAt": {
-              ".validate": "newData.isNumber()"
             }
           }
         },
         ".validate": "newData.hasChildren(['id', 'board', 'players', 'turnOrder', 'currentTurn'])"
+      }
+    },
+
+    "activeGames": {
+      ".indexOn": ".value",
+      "$gameId": {
+        ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
+        ".validate": "newData.isNumber()"
+      }
+    },
+
+    "gamePresence": {
+      "$gameId": {
+        ".read": "auth != null",
+        "$playerId": {
+          ".write": "auth != null && root.child('games').child($gameId).child('players').child($playerId).child('uid').val() === auth.uid",
+          "isConnected": {
+            ".validate": "newData.isBoolean()"
+          },
+          "disconnectedAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "lastSeenAt": {
+            ".validate": "newData.isNumber()"
+          }
+        }
       }
     },
 

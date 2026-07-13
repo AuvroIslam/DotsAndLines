@@ -1,28 +1,25 @@
-import type { Player } from '@/types';
+import type { PlayerPresence } from '@/types';
 import { HEARTBEAT_STALE_MS } from '@/utils/constants';
 
 /**
- * Judges whether a player is currently "away", combining two independent
- * signals so a departure is caught quickly either way:
+ * Judges whether a player currently looks "away", combining two independent
+ * signals so a departure is spotted quickly either way:
  *  - `isConnected === false`: RTDB's `onDisconnect` fired — fast, but only
  *    reliable for a graceful close (app killed); a silent network loss can
  *    leave the server's connection-tracking unaware for a long time.
  *  - a stale `lastSeenAt` heartbeat: catches that silent-network-loss case in
  *    bounded time, since it's judged by the *observer's* clock rather than
  *    waiting on the server to notice the dead connection on its own.
- * Both the client-side countdown display and the server-side elimination
- * transaction call this same logic, so they always agree.
+ *
+ * This is cosmetic — it only decides who to show as "reconnecting…". No result
+ * depends on it: an away player is never forfeited for being away, they simply
+ * miss turns like anyone else who isn't playing. So a wrong answer here costs a
+ * misleading banner, never a match.
  */
 export class PresenceChecker {
-  static isAway(player: Player, now: number): boolean {
-    if (!player.isConnected) return true;
-    return player.lastSeenAt != null && now - player.lastSeenAt > HEARTBEAT_STALE_MS;
-  }
-
-  /** The instant `player` is considered to have gone away, or null while present. */
-  static awaySince(player: Player, now: number): number | null {
-    if (!PresenceChecker.isAway(player, now)) return null;
-    if (!player.isConnected && player.disconnectedAt != null) return player.disconnectedAt;
-    return player.lastSeenAt != null ? player.lastSeenAt + HEARTBEAT_STALE_MS : now;
+  static isAway(presence: PlayerPresence | undefined, now: number): boolean {
+    if (!presence) return false; // nothing reported yet — assume present
+    if (!presence.isConnected) return true;
+    return presence.lastSeenAt != null && now - presence.lastSeenAt > HEARTBEAT_STALE_MS;
   }
 }

@@ -1,4 +1,11 @@
-import type { BoardState, GameResult, GameState, Player, PlayerId } from '@/types';
+import type {
+  BoardState,
+  GamePresence,
+  GameResult,
+  GameState,
+  Player,
+  PlayerId,
+} from '@/types';
 
 /**
  * Realtime Database omits empty objects/arrays (they read back as `null`).
@@ -18,13 +25,10 @@ export function normalizeBoard(
 }
 
 /**
- * Games written before `isEliminated`/`disconnectedAt`/`lastSeenAt`/
- * `consecutiveMisses` existed have those keys missing entirely (not
- * `false`/`null`/`0` — just absent, since RTDB drops falsy-empty values), so
- * default them here rather than let `undefined` leak into code that assumes the
- * type's booleans/numbers. `consecutiveMisses` especially: an `undefined + 1`
- * would poison the miss counter into `NaN` and the player could never be
- * eliminated.
+ * RTDB omits keys that were absent when a game was written, so default them
+ * rather than let `undefined` leak into code that assumes the type's
+ * booleans/numbers. `consecutiveMisses` especially: an `undefined + 1` would
+ * poison the miss counter into `NaN` and the player could never be eliminated.
  */
 export function normalizePlayers(
   raw: Record<PlayerId, Player> | null | undefined,
@@ -35,12 +39,27 @@ export function normalizePlayers(
     players[id] = {
       ...p,
       isEliminated: p.isEliminated ?? false,
-      disconnectedAt: p.disconnectedAt ?? null,
-      lastSeenAt: p.lastSeenAt ?? null,
       consecutiveMisses: p.consecutiveMisses ?? 0,
     };
   }
   return players;
+}
+
+/**
+ * Presence lives in its own node, and a player who has never connected simply
+ * has no entry — so absence means "nothing reported", not "offline".
+ */
+export function normalizePresence(raw: GamePresence | null | undefined): GamePresence {
+  if (!raw) return {};
+  const out: GamePresence = {};
+  for (const [id, p] of Object.entries(raw)) {
+    out[id] = {
+      isConnected: p?.isConnected ?? false,
+      disconnectedAt: p?.disconnectedAt ?? null,
+      lastSeenAt: p?.lastSeenAt ?? null,
+    };
+  }
+  return out;
 }
 
 /**

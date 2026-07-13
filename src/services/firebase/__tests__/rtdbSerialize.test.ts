@@ -1,6 +1,11 @@
 import type { GameResult, GameState } from '@/types';
 
-import { normalizeGame, normalizePlayers, normalizeResult } from '../rtdbSerialize';
+import {
+  normalizeGame,
+  normalizePlayers,
+  normalizePresence,
+  normalizeResult,
+} from '../rtdbSerialize';
 
 /**
  * RTDB drops empty maps and arrays, and omits keys that didn't exist when a
@@ -38,17 +43,30 @@ describe('rtdbSerialize', () => {
   });
 
   describe('normalizePlayers', () => {
-    it('defaults presence and miss fields absent from older games', () => {
+    it('defaults fields absent from older games', () => {
       const raw = {
-        P1: { id: 'P1', uid: 'u1', index: 0, displayName: 'A', color: '#fff', isConnected: true, score: 0 },
+        P1: { id: 'P1', uid: 'u1', index: 0, displayName: 'A', color: '#fff', score: 0 },
       } as never;
       const p = normalizePlayers(raw).P1!;
       expect(p.isEliminated).toBe(false);
-      expect(p.disconnectedAt).toBeNull();
-      expect(p.lastSeenAt).toBeNull();
       // A missing counter must not poison the miss arithmetic into NaN.
       expect(p.consecutiveMisses).toBe(0);
       expect(p.consecutiveMisses + 1).toBe(1);
+    });
+  });
+
+  describe('normalizePresence', () => {
+    it('returns an empty map when nobody has reported yet', () => {
+      expect(normalizePresence(null)).toEqual({});
+    });
+
+    it('fills in missing presence fields', () => {
+      const raw = { P1: { isConnected: true } } as never;
+      expect(normalizePresence(raw).P1).toEqual({
+        isConnected: true,
+        disconnectedAt: null,
+        lastSeenAt: null,
+      });
     });
   });
 

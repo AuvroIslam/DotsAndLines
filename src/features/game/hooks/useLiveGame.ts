@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 
 import { useGameStore } from '@/store';
 import { useAuthStore } from '@/store';
-import type { GameState, Line, Player, PlayerId } from '@/types';
+import type { GamePresence, GameState, Line, Player, PlayerId } from '@/types';
 
 export interface LiveGame {
   game: GameState | null;
+  /** Live connection state, streamed apart from the game. Cosmetic only. */
+  presence: GamePresence;
   myPlayerId: PlayerId | null;
   isMyTurn: boolean;
   currentPlayer: Player | null;
@@ -25,6 +27,7 @@ export function useLiveGame(gameId: string): LiveGame {
   const connect = useGameStore((s) => s.connect);
   const disconnect = useGameStore((s) => s.disconnect);
   const game = useGameStore((s) => s.game);
+  const presence = useGameStore((s) => s.presence);
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const connection = useGameStore((s) => s.connection);
   const pendingLines = useGameStore((s) => s.pendingLines);
@@ -43,6 +46,7 @@ export function useLiveGame(gameId: string): LiveGame {
 
   return {
     game,
+    presence,
     myPlayerId,
     isMyTurn,
     currentPlayer,

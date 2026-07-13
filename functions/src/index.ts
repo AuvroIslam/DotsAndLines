@@ -1,32 +1,30 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { logger, setGlobalOptions } from 'firebase-functions/v2';
-import { onValueWritten } from 'firebase-functions/v2/database';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 import type { GameState } from '@/types';
 
 import {
+  finalizeByMember,
   finalizeIfComplete,
   forfeitByUid,
   timeoutExpiredTurns,
   timeoutExpiredTurnsByMember,
+  type TxResult,
 } from './authority';
 
-// Deploy every function in the same region as the Realtime Database instance
-// (dotsandboxes-185bb-default-rtdb lives in asia-southeast1). A 2nd-gen RTDB
-// trigger MUST be co-located with its database, and the client resolves
-// callables from this same region (see `getFunctions` in services/firebase/config).
+// Callables must resolve from the region the client asks for (see `getFunctions`
+// in services/firebase/config). There are deliberately no RTDB triggers here —
+// a trigger on the game node would fire on every single move, so all server work
+// is driven by the sweep and by explicit, server-validated requests instead.
 setGlobalOptions({ region: 'asia-southeast1' });
 
 // In production `initializeApp()` picks up the correct default RTDB instance
 // (`<project>-default-rtdb`) from FIREBASE_CONFIG. Under the emulator with a
-// `demo-` project, however, the auto-derived database URL drops the
-// `-default-rtdb` suffix while the RTDB *triggers* still bind to it — so a
-// manually built `getDatabase().ref()` would point at a different (empty)
-// namespace than the triggers. This branch (only taken when the emulator env
-// var is present) realigns them; production is unaffected.
+// `demo-` project the auto-derived URL drops the `-default-rtdb` suffix, so
+// realign it; production is unaffected.
 const emulatorDbHost = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
 initializeApp(
   emulatorDbHost
@@ -34,49 +32,80 @@ initializeApp(
     : undefined,
 );
 
-/**
- * A 2nd-gen RTDB trigger must live in the same region as its database or it
- * silently never fires — no error, it just doesn't run. The real instance is in
- * asia-southeast1, but the *emulated* database always reports us-central1, so
- * pinning the trigger to the production region would make it untestable
- * locally (and a finalize path that can't be exercised is one that breaks
- * unnoticed). Track whichever database we're actually pointed at.
- */
-const DATABASE_REGION = emulatorDbHost ? 'us-central1' : 'asia-southeast1';
-
 const db = () => getDatabase();
 const gameRef = (gameId: string) => db().ref(`games/${gameId}`);
+const activeRef = (gameId: string) => db().ref(`activeGames/${gameId}`);
+
+/** How many overdue games one sweep will process. Bounds a single run's work. */
+const SWEEP_BATCH = 250;
+
+/**
+ * Keep the due-index in step with the game we just wrote: re-arm it with the new
+ * turn deadline, or drop the game from the index once it's over. Finished games
+ * must leave the index, otherwise the sweep would keep rediscovering them
+ * forever and the index would grow without bound.
+ */
+async function syncDueIndex(gameId: string, state: GameState | null): Promise<void> {
+  if (!state || state.phase !== 'playing') {
+    await activeRef(gameId).remove();
+    return;
+  }
+  await activeRef(gameId).set(state.turnStartedAt + state.turnDurationMs);
+}
+
+/** Apply an authority write and immediately reconcile the index with its result. */
+async function commitAndSync(gameId: string, res: TxResult): Promise<TxResult> {
+  await syncDueIndex(gameId, res.state);
+  return res;
+}
 
 /**
  * Backstop for games nobody is connected to.
  *
- * While at least one player is present, their client nudges `requestTurnTimeout`
- * the moment a turn clock runs out, so timeouts land in about a second. But if
- * *everyone* has gone, there's no client left to nudge — this sweep is what
- * still resolves the match. It replays every elapsed turn window at once, so an
- * abandoned game finishes on the very next run rather than creeping forward one
- * turn per minute. It also finalizes any completed-but-unfinalized board, so a
- * game can't hang if the `finalizeGame` trigger ever misses.
+ * While at least one player is present their client asks for a timeout the
+ * moment a clock runs out, so this is not the fast path — it exists for the case
+ * where *everyone* has gone and there is no client left to ask.
+ *
+ * It reads the `activeGames` due-index (`gameId -> turn deadline`) and pulls only
+ * the games actually overdue, rather than downloading every live game every
+ * minute. That is the whole scalability story: sweep cost tracks the number of
+ * *overdue* games, not the number of *active* ones, so a thousand healthy games
+ * in progress cost essentially nothing to sweep past.
+ *
+ * The index is only a hint — every game it surfaces is re-validated against its
+ * real state before anything is written, so a stale or tampered entry can waste
+ * a lookup but never produce a wrong result.
  */
 export const sweepAbandonedGames = onSchedule(
-  { schedule: 'every 1 minutes', timeoutSeconds: 120, memory: '256MiB' },
+  { schedule: 'every 1 minutes', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
-    const snap = await db().ref('games').orderByChild('phase').equalTo('playing').once('value');
-    const games = snap.val() as Record<string, GameState> | null;
-    if (!games) return;
+    const now = Date.now();
+    const due = await db()
+      .ref('activeGames')
+      .orderByValue()
+      .endAt(now)
+      .limitToFirst(SWEEP_BATCH)
+      .once('value');
+
+    const overdue = due.val() as Record<string, number> | null;
+    if (!overdue) return;
+
+    const ids = Object.keys(overdue);
+    logger.info('sweeping overdue games', { count: ids.length });
 
     await Promise.all(
-      Object.keys(games).map(async (gameId) => {
+      ids.map(async (gameId) => {
         try {
-          const now = Date.now();
           // Finalize first: a full board is a finished game, not an idle one.
-          if (await finalizeIfComplete(gameRef(gameId), now)) {
+          const finalized = await finalizeIfComplete(gameRef(gameId), Date.now());
+          if (finalized.committed) {
+            await syncDueIndex(gameId, finalized.state);
             logger.info('finalized a completed board', { gameId });
             return;
           }
-          if (await timeoutExpiredTurns(gameRef(gameId), now)) {
-            logger.info('applied overdue turn timeouts', { gameId });
-          }
+          const timed = await timeoutExpiredTurns(gameRef(gameId), Date.now());
+          await syncDueIndex(gameId, timed.state);
+          if (timed.committed) logger.info('applied overdue turn timeouts', { gameId });
         } catch (err) {
           logger.error('sweep failed', { gameId, err });
         }
@@ -86,19 +115,28 @@ export const sweepAbandonedGames = onSchedule(
 );
 
 /**
- * Writes the terminal state for a normally-completed board. Scoped to the board
- * node so it fires on moves only (not on the frequent presence/heartbeat writes),
- * and aborts unless the board is genuinely full — so clients never persist a
- * `finished`/`result` state themselves.
+ * Finalize a completed board.
+ *
+ * The client calls this the instant it sees the last box filled, purely so the
+ * result lands immediately instead of waiting for the sweep. Its claim carries
+ * no weight: the server re-reads the authoritative board and re-derives
+ * completeness with the same engine the game runs on, and refuses to write
+ * anything if the board isn't genuinely full. A client asking early, twice, or
+ * maliciously gets a no-op.
  */
-export const finalizeGame = onValueWritten(
-  { ref: 'games/{gameId}/board', region: DATABASE_REGION },
-  async (event) => {
-    const gameNode = event.data.after.ref.parent; // games/{gameId}
-    if (!gameNode) return;
-    await finalizeIfComplete(gameNode, Date.now());
-  },
-);
+export const finalizeGame = onCall<{ gameId?: string }>(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const gameId = request.data?.gameId;
+  if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
+
+  const res = await finalizeByMember(gameRef(gameId), uid, Date.now());
+  if (res.outcome === 'not_member') {
+    throw new HttpsError('permission-denied', 'Not a player in this game.');
+  }
+  await commitAndSync(gameId, res);
+  return { ok: res.outcome === 'ok' };
+});
 
 /**
  * Turn-clock enforcement. Any player in the game may ask — the server checks the
@@ -113,11 +151,12 @@ export const requestTurnTimeout = onCall<{ gameId?: string }>(async (request) =>
   const gameId = request.data?.gameId;
   if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
 
-  const outcome = await timeoutExpiredTurnsByMember(gameRef(gameId), uid, Date.now());
-  if (outcome === 'not_member') {
+  const res = await timeoutExpiredTurnsByMember(gameRef(gameId), uid, Date.now());
+  if (res.outcome === 'not_member') {
     throw new HttpsError('permission-denied', 'Not a player in this game.');
   }
-  return { ok: outcome === 'ok' };
+  await commitAndSync(gameId, res);
+  return { ok: res.outcome === 'ok' };
 });
 
 /** Explicit leave — a concession. Only a player in the game may forfeit themselves. */
@@ -127,9 +166,10 @@ export const forfeitGame = onCall<{ gameId?: string }>(async (request) => {
   const gameId = request.data?.gameId;
   if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
 
-  const outcome = await forfeitByUid(gameRef(gameId), uid, Date.now());
-  if (outcome === 'not_member') {
+  const res = await forfeitByUid(gameRef(gameId), uid, Date.now());
+  if (res.outcome === 'not_member') {
     throw new HttpsError('permission-denied', 'Not a player in this game.');
   }
-  return { ok: outcome === 'ok' };
+  await commitAndSync(gameId, res);
+  return { ok: res.outcome === 'ok' };
 });

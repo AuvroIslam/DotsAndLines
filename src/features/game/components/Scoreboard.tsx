@@ -4,15 +4,17 @@ import { StyleSheet, View } from 'react-native';
 import { Typography } from '@/components/ui';
 import { radius, spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
-import type { GameState } from '@/types';
+import type { GamePresence, GameState } from '@/types';
 
 interface ScoreboardProps {
   game: GameState;
+  /** Streamed separately from the game — see `PlayerPresence`. Purely cosmetic. */
+  presence: GamePresence;
   myPlayerId: string | null;
 }
 
 /** Per-player score chips; the active player's chip is highlighted. */
-export function Scoreboard({ game, myPlayerId }: ScoreboardProps) {
+export function Scoreboard({ game, presence, myPlayerId }: ScoreboardProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const players = game.turnOrder.map((id) => game.players[id]).filter(Boolean);
@@ -33,7 +35,11 @@ export function Scoreboard({ game, myPlayerId }: ScoreboardProps) {
             <View>
               <Typography variant="caption" muted>
                 {p!.uid === myPlayerId || p!.id === myPlayerId ? 'You' : p!.displayName}
-                {p!.isEliminated ? ' · left' : !p!.isConnected ? ' ·offline' : ''}
+                {p!.isEliminated
+                  ? ' · left'
+                  : presence[p!.id]?.isConnected === false
+                    ? ' ·offline'
+                    : ''}
               </Typography>
               <Typography variant="h3">{p!.score}</Typography>
             </View>

@@ -1,5 +1,5 @@
 import { GameManager } from '@/gameEngine';
-import type { GameState, Line, PlayerId } from '@/types';
+import type { GamePresence, GameState, Line, PlayerId } from '@/types';
 
 import { LocalCollection } from './store';
 
@@ -7,6 +7,8 @@ export type ApplyMoveResult =
   { ok: true; state: GameState } | { ok: false; reason: 'rejected' | 'not_found' };
 
 const games = new LocalCollection<GameState>();
+/** Presence is kept apart from game state, mirroring the firebase layout. */
+const presences = new LocalCollection<GamePresence>();
 
 /**
  * In-memory replica of `services/firebase/gameRepository` — same method
@@ -42,25 +44,24 @@ export const gameRepository = {
     return { ok: true, state: games.get(gameId)! };
   },
 
-  /** No real network here, so just reflect connected/disconnected synchronously. */
+  subscribePresence(gameId: string, cb: (presence: GamePresence) => void): () => void {
+    return presences.subscribe(gameId, (p) => cb(p ?? {}));
+  },
+
+  /**
+   * Presence lives outside the game (as in the firebase impl), so none of this
+   * touches game state. No real network here, so reflect it synchronously.
+   */
   trackConnection(gameId: string, playerId: PlayerId): () => void {
     const setConnected = (isConnected: boolean) => {
-      games.transaction(gameId, (current) => {
-        if (!current?.players[playerId]) return undefined;
-        return {
-          ...current,
-          players: {
-            ...current.players,
-            [playerId]: {
-              ...current.players[playerId]!,
-              isConnected,
-              disconnectedAt: isConnected ? null : Date.now(),
-              lastSeenAt: isConnected ? Date.now() : current.players[playerId]!.lastSeenAt,
-            },
-          },
-          updatedAt: Date.now(),
-        };
-      });
+      presences.transaction(gameId, (current) => ({
+        ...(current ?? {}),
+        [playerId]: {
+          isConnected,
+          disconnectedAt: isConnected ? null : Date.now(),
+          lastSeenAt: isConnected ? Date.now() : (current?.[playerId]?.lastSeenAt ?? null),
+        },
+      }));
     };
     setConnected(true);
     return () => setConnected(false);
@@ -68,19 +69,18 @@ export const gameRepository = {
 
   /** Refresh this player's heartbeat (see the firebase impl's doc comment for why). */
   async heartbeat(gameId: string, playerId: PlayerId): Promise<void> {
-    games.transaction(gameId, (current) => {
-      if (!current?.players[playerId]) return undefined;
-      return {
-        ...current,
-        players: {
-          ...current.players,
-          [playerId]: { ...current.players[playerId]!, lastSeenAt: Date.now() },
-        },
-      };
-    });
+    presences.transaction(gameId, (current) => ({
+      ...(current ?? {}),
+      [playerId]: {
+        isConnected: current?.[playerId]?.isConnected ?? true,
+        disconnectedAt: current?.[playerId]?.disconnectedAt ?? null,
+        lastSeenAt: Date.now(),
+      },
+    }));
   },
 
   async deleteGame(gameId: string): Promise<void> {
     games.delete(gameId);
+    presences.delete(gameId);
   },
 };

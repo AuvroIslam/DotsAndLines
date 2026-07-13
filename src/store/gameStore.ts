@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { GameManager, WinChecker } from '@/gameEngine';
 import { gameFunctions, gameRepository } from '@/services/firebase';
-import type { GameState, Line, Player, PlayerId } from '@/types';
+import type { GamePresence, GameState, Line, Player, PlayerId } from '@/types';
 import { lineToKey } from '@/utils';
 
 export type ConnectionStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';
@@ -10,6 +10,8 @@ export type ConnectionStatus = 'connecting' | 'online' | 'reconnecting' | 'offli
 interface GameStoreState {
   gameId: string | null;
   game: GameState | null;
+  /** Live connection state, streamed separately from the game (see `PlayerPresence`). */
+  presence: GamePresence;
   myUid: string | null;
   myPlayerId: PlayerId | null;
   connection: ConnectionStatus;
@@ -25,6 +27,7 @@ interface GameStoreState {
 }
 
 let unsubscribe: (() => void) | null = null;
+let unsubscribePresence: (() => void) | null = null;
 
 function resolveMyPlayerId(game: GameState | null, uid: string | null): PlayerId | null {
   if (!game || !uid) return null;
@@ -55,6 +58,7 @@ function withDerivedFinish(game: GameState | null): GameState | null {
 export const useGameStore = create<GameStoreState>((set, get) => ({
   gameId: null,
   game: null,
+  presence: {},
   myUid: null,
   myPlayerId: null,
   connection: 'connecting',
@@ -64,10 +68,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   connect: (gameId, uid) => {
     if (get().gameId === gameId && unsubscribe) return;
     unsubscribe?.();
+    unsubscribePresence?.();
     set({
       gameId,
       myUid: uid,
       game: null,
+      presence: {},
       myPlayerId: null,
       connection: 'connecting',
       pendingLines: new Set(),
@@ -84,14 +90,23 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         pendingLines: new Set(),
       }));
     });
+
+    // Presence streams on its own node so the heartbeat traffic never touches
+    // the game subscription above — which now only fires on real moves.
+    unsubscribePresence = gameRepository.subscribePresence(gameId, (presence) => {
+      set({ presence });
+    });
   },
 
   disconnect: () => {
     unsubscribe?.();
+    unsubscribePresence?.();
     unsubscribe = null;
+    unsubscribePresence = null;
     set({
       gameId: null,
       game: null,
+      presence: {},
       myUid: null,
       myPlayerId: null,
       pendingLines: new Set(),
@@ -125,6 +140,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       // Roll back to authoritative state; the live subscription will also refresh.
       const fresh = await gameRepository.getGame(gameId);
       set({ game: fresh, pendingLines: new Set(), error: 'move_rejected' });
+      return;
+    }
+
+    // That move may have filled the board. Clients can't write a terminal state,
+    // so ask the server to finalize — purely so the result lands now instead of
+    // waiting for the sweep. The server re-derives completeness from the real
+    // board and ignores us if we're wrong, so this is a hint, never a claim.
+    if (WinChecker.isGameOver(res.state)) {
+      void gameFunctions.finalize(gameId);
     }
   },
 

@@ -18,8 +18,21 @@ const requestTurnTimeoutFn = httpsCallable<{ gameId: string }, ActionResult>(
   functions,
   'requestTurnTimeout',
 );
+const finalizeGameFn = httpsCallable<{ gameId: string }, ActionResult>(functions, 'finalizeGame');
 
 export const gameFunctions = {
+  /**
+   * Ask the server to write the result for a completed board.
+   *
+   * This only saves latency — the sweep would finalize the game anyway. The
+   * server re-reads the authoritative board and re-checks completeness itself,
+   * so calling early, twice, or dishonestly achieves nothing.
+   */
+  async finalize(gameId: string): Promise<boolean> {
+    const res = await finalizeGameFn({ gameId });
+    return res.data.ok;
+  },
+
   /** Ask the server to forfeit the calling player (explicit leave — an outright concession). */
   async forfeit(gameId: string): Promise<boolean> {
     const res = await forfeitGameFn({ gameId });

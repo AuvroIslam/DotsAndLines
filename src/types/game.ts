@@ -45,19 +45,8 @@ export interface Player {
   index: PlayerIndex;
   displayName: string;
   color: string;
-  isConnected: boolean;
-  /** Permanently out of the match (forfeited or timed out) — distinct from a transient `isConnected` blip. */
+  /** Permanently out of the match (forfeited or timed out). */
   isEliminated: boolean;
-  /** Server timestamp of the current disconnect episode, or null while connected. */
-  disconnectedAt: number | null;
-  /**
-   * Server timestamp of this player's last heartbeat, refreshed periodically
-   * while connected. A stale value is what actually detects a silent network
-   * loss (see `HEARTBEAT_STALE_MS`) — `onDisconnect`/`isConnected` alone can
-   * take a long time to notice one, since it depends on the server's own
-   * connection-timeout rather than an immediate signal.
-   */
-  lastSeenAt: number | null;
   /**
    * Turns this player has let expire back-to-back, reset to 0 the moment they
    * play. This — not their connection state — is what ends an abandoned match:
@@ -68,6 +57,36 @@ export interface Player {
   consecutiveMisses: number;
   score: number;
 }
+
+/**
+ * A player's live connection state, stored *outside* the game (see
+ * `RtdbPaths.gamePresence`) and deliberately not part of `GameState`.
+ *
+ * Presence is high-churn — a heartbeat every few seconds per player — while
+ * game state only changes when someone actually moves. Keeping them in one node
+ * would mean every heartbeat rewrote the game and pushed a fresh snapshot to
+ * every subscriber, which is the difference between O(moves) and O(players/sec)
+ * traffic once there are many concurrent games.
+ *
+ * It is also purely cosmetic: it drives the "reconnecting…" banner and the
+ * offline dot, and decides nothing. Being away never loses you a match —
+ * missing turns does.
+ */
+export interface PlayerPresence {
+  isConnected: boolean;
+  /** Server timestamp of the current disconnect episode, or null while connected. */
+  disconnectedAt: number | null;
+  /**
+   * Server timestamp of this player's last heartbeat. A stale value is what
+   * detects a silent network loss (see `HEARTBEAT_STALE_MS`) — `onDisconnect`
+   * alone can take a long time to notice one, since it depends on the server's
+   * own connection timeout rather than an immediate signal.
+   */
+  lastSeenAt: number | null;
+}
+
+/** Presence for every player in one game, keyed by PlayerId. */
+export type GamePresence = Record<PlayerId, PlayerPresence>;
 
 /**
  * Serializable snapshot of the board.

@@ -25,6 +25,12 @@ import type { GameState } from '@/types';
 
 export type ActionOutcome = 'ok' | 'not_member' | 'noop';
 
+/** Result of an authority write: did it commit, and what does the game look like now? */
+export interface TxResult {
+  committed: boolean;
+  state: GameState | null;
+}
+
 /** Safety bound so a long-abandoned game can never spin the catch-up loop. */
 const MAX_CATCHUP_TURNS = 32;
 
@@ -39,12 +45,14 @@ const MAX_CATCHUP_TURNS = 32;
 async function primedTransaction(
   ref: Reference,
   update: (current: GameState | null) => GameState | undefined,
-): Promise<{ committed: boolean }> {
+): Promise<TxResult> {
   const listener = ref.on('value', () => {});
   try {
     await ref.once('value'); // wait for the listener to sync current data
     const res = await ref.transaction(update);
-    return { committed: res.committed };
+    // The snapshot holds the current value either way, so callers can resync the
+    // deadline index from the real post-write state rather than guessing.
+    return { committed: res.committed, state: normalizeGame(res.snapshot.val() as GameState) };
   } finally {
     ref.off('value', listener);
   }
@@ -85,13 +93,12 @@ function catchUpExpiredTurns(state: GameState, now: number): GameState | undefin
  * any member to request and for the scheduled sweep to run: the deadline is
  * always re-checked against the server's own clock, so no client can rush it.
  */
-export async function timeoutExpiredTurns(ref: Reference, now: number): Promise<boolean> {
-  const res = await primedTransaction(ref, (current) => {
+export async function timeoutExpiredTurns(ref: Reference, now: number): Promise<TxResult> {
+  return primedTransaction(ref, (current) => {
     const state = normalizeGame(current);
     if (!state || state.phase !== 'playing') return undefined;
     return catchUpExpiredTurns(state, now);
   });
-  return res.committed;
 }
 
 /** As above, but for a callable: verifies the requester actually plays in this game. */
@@ -99,9 +106,9 @@ export async function timeoutExpiredTurnsByMember(
   ref: Reference,
   uid: string,
   now: number,
-): Promise<ActionOutcome> {
+): Promise<TxResult & { outcome: ActionOutcome }> {
   let outcome: ActionOutcome = 'noop';
-  await primedTransaction(ref, (current) => {
+  const res = await primedTransaction(ref, (current) => {
     const state = normalizeGame(current);
     if (!state || state.phase !== 'playing') {
       outcome = 'noop';
@@ -115,22 +122,53 @@ export async function timeoutExpiredTurnsByMember(
     outcome = next ? 'ok' : 'noop'; // noop: nothing was actually overdue
     return next;
   });
-  return outcome;
+  return { ...res, outcome };
 }
 
 /**
- * Write the terminal state for a normally-completed board. Runs after any board
- * write; aborts unless the board is actually full and the game is still playing,
- * so clients can persist the winning move without ever writing `finished`/`result`.
+ * Write the terminal state for a normally-completed board.
+ *
+ * A client asks for this the moment it sees the board fill up, but its word is
+ * never taken for it: the completeness check is re-derived here from the
+ * authoritative board with the same `WinChecker` the engine uses, and the write
+ * aborts unless the board really is full and the game really is still playing.
+ * The request is a latency hint, not a claim — which is why it's safe to let any
+ * member (or the sweep) make it.
  */
-export async function finalizeIfComplete(ref: Reference, now: number): Promise<boolean> {
-  const res = await primedTransaction(ref, (current) => {
+export async function finalizeIfComplete(ref: Reference, now: number): Promise<TxResult> {
+  return primedTransaction(ref, (current) => {
     const state = normalizeGame(current);
     if (!state || state.phase !== 'playing') return undefined;
-    if (!WinChecker.isGameOver(state)) return undefined;
+    if (!WinChecker.isGameOver(state)) return undefined; // server decides, not the caller
     return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
   });
-  return res.committed;
+}
+
+/** Finalize on behalf of a caller, verifying they actually play in this game. */
+export async function finalizeByMember(
+  ref: Reference,
+  uid: string,
+  now: number,
+): Promise<TxResult & { outcome: ActionOutcome }> {
+  let outcome: ActionOutcome = 'noop';
+  const res = await primedTransaction(ref, (current) => {
+    const state = normalizeGame(current);
+    if (!state) {
+      outcome = 'noop';
+      return undefined;
+    }
+    if (!Object.values(state.players).some((p) => p.uid === uid)) {
+      outcome = 'not_member';
+      return undefined;
+    }
+    if (state.phase !== 'playing' || !WinChecker.isGameOver(state)) {
+      outcome = 'noop'; // board isn't actually finished — ignore the request
+      return undefined;
+    }
+    outcome = 'ok';
+    return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
+  });
+  return { ...res, outcome };
 }
 
 /**
@@ -141,9 +179,9 @@ export async function forfeitByUid(
   ref: Reference,
   uid: string,
   now: number,
-): Promise<ActionOutcome> {
+): Promise<TxResult & { outcome: ActionOutcome }> {
   let outcome: ActionOutcome = 'noop';
-  await primedTransaction(ref, (current) => {
+  const res = await primedTransaction(ref, (current) => {
     const state = normalizeGame(current);
     if (!state) {
       outcome = 'noop';
@@ -161,5 +199,5 @@ export async function forfeitByUid(
     outcome = 'ok';
     return GameManager.forfeit(state, me.id, now);
   });
-  return outcome;
+  return { ...res, outcome };
 }

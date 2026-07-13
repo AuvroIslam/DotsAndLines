@@ -1,5 +1,5 @@
 import { PresenceChecker } from '@/gameEngine';
-import type { GameState, PlayerId } from '@/types';
+import type { GamePresence, GameState, PlayerId } from '@/types';
 
 /**
  * Which peers (not me) currently look away, for the "reconnecting…" banner.
@@ -18,6 +18,7 @@ import type { GameState, PlayerId } from '@/types';
  */
 export function computeAwayPeers(
   game: GameState | null,
+  presence: GamePresence,
   myPlayerId: PlayerId | null,
   now: number,
   isMyConnectionHealthy: boolean,
@@ -26,8 +27,7 @@ export function computeAwayPeers(
 
   return game.turnOrder.filter((id) => {
     if (id === myPlayerId) return false;
-    const p = game.players[id];
-    if (!p || p.isEliminated) return false;
-    return PresenceChecker.isAway(p, now);
+    if (game.players[id]?.isEliminated) return false;
+    return PresenceChecker.isAway(presence[id], now);
   });
 }

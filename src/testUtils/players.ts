@@ -8,10 +8,7 @@ export function players(n: number): Player[] {
     index: i as Player['index'],
     displayName: `Player ${i + 1}`,
     color: '#fff',
-    isConnected: true,
     isEliminated: false,
-    disconnectedAt: null,
-    lastSeenAt: null,
     consecutiveMisses: 0,
     score: 0,
   }));
