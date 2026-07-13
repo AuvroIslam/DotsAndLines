@@ -29,7 +29,7 @@
               ".validate": "newData.isBoolean()"
             },
             "isEliminated": {
-              ".validate": "newData.isBoolean() && newData.val() === false"
+              ".validate": "newData.isBoolean() && (newData.val() === false || newData.val() === data.val())"
             },
             "disconnectedAt": {
               ".validate": "newData.isNumber()"
