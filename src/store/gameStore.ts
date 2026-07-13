@@ -22,7 +22,8 @@ interface GameStoreState {
   connect: (gameId: string, uid: string) => void;
   disconnect: () => void;
   makeMove: (line: Line) => Promise<void>;
-  forfeit: () => Promise<void>;
+  /** Resolves true if the server accepted the forfeit. Never throws. */
+  forfeit: () => Promise<boolean>;
   setConnection: (status: ConnectionStatus) => void;
 }
 
@@ -125,21 +126,35 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       }));
     }
 
-    const accepted = await gameFunctions.playMove(gameId, line);
-    if (!accepted) {
-      // The server refused it — a stale tap, or someone took the line first.
-      // Roll back to authoritative state; the subscription will also refresh.
+    let res = await gameFunctions.playMove(gameId, line);
+
+    // `aborted` means another write landed between our read and our swap — the
+    // opponent moved, or the clock timed us out. That's ordinary contention in a
+    // live game, not a failure, so re-read and try once more before giving up.
+    if (!res.ok && res.code === 'aborted') {
+      res = await gameFunctions.playMove(gameId, line);
+    }
+
+    if (!gameFunctions.accepted(res)) {
+      // Refused (a stale tap, a line someone else took first) or unreachable.
+      // Either way the optimistic line must not stay on the board: roll back to
+      // authoritative state. The subscription will also refresh us.
       const fresh = await gameRepository.getGame(gameId);
-      set({ game: fresh, pendingLines: new Set(), error: 'move_rejected' });
+      set({
+        game: fresh,
+        pendingLines: new Set(),
+        error: res.ok ? 'move_rejected' : res.code,
+      });
     }
   },
 
   forfeit: async () => {
     const { gameId, myPlayerId } = get();
-    if (!gameId || !myPlayerId) return;
+    if (!gameId || !myPlayerId) return false;
     // Server-authoritative: the client only requests the forfeit; the Cloud
     // Function is the sole writer of the resulting terminal state.
-    await gameFunctions.forfeit(gameId);
+    const res = await gameFunctions.forfeit(gameId);
+    return gameFunctions.accepted(res);
   },
 
   setConnection: (status) => set({ connection: status }),

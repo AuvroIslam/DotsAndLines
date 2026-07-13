@@ -126,20 +126,24 @@ module.exports = {
       t.check("the reason is 'forfeit'", g.result?.reason === 'forfeit');
     }
 
-    t.section('a completed board is never charged a miss');
+    t.section('a completed board is finished, not charged a miss');
     {
-      // Guards the window between a board filling and the result being written.
+      // Guards the window between a board filling and the result being written:
+      // a full board is a *finished* game, not an idle player. The sweep must
+      // finalize it rather than punish whoever happens to be on the clock.
       const [a, b] = [await signUp(), await signUp()];
       const boxes = {};
       for (let i = 0; i < 9; i += 1) boxes[`b:${i}:0`] = i < 5 ? 'P1' : 'P2';
       await seedGame('d7', [a, b], 3, { turnStartedAt: Date.now() - TURN_MS - 5_000 });
       await db.ref('games/d7/board/boxes').set(boxes);
 
-      const swept = await authority.timeoutExpiredTurns(db, 'd7', Date.now());
-      t.check('the sweep refuses to time out a completed board', swept.outcome !== 'ok', swept.outcome);
+      await authority.timeoutExpiredTurns(db, 'd7', Date.now());
 
       const g = await getGame('d7');
       t.check('no bogus miss was charged', (g.players.P1.consecutiveMisses ?? 0) === 0);
+      t.check('the completed board was finalized instead', g.phase === 'finished', g.phase);
+      t.check('the winner came from the board, not the clock', g.result?.reason == null);
+      t.check('the higher scorer won', JSON.stringify(g.result?.winners) === '["P1"]');
     }
   },
 };

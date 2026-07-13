@@ -1,12 +1,10 @@
 import { get, onValue, ref, remove, runTransaction, set } from 'firebase/database';
 
-import { GameManager } from '@/gameEngine';
-import { playerColors } from '@/theme';
-import type { BoardSize, MatchmakingTicket, Player } from '@/types';
+import type { BoardSize, MatchmakingTicket } from '@/types';
 import { createLogger } from '@/utils';
 
 import { realtimeDb } from './config';
-import { gameRepository } from './gameRepository';
+import { gameFunctions } from './gameFunctions';
 import { RtdbPaths } from './paths';
 
 const log = createLogger('MM');
@@ -16,7 +14,7 @@ const log = createLogger('MM');
 // can't permanently block real players from pairing.
 const MAX_TICKET_AGE_MS = 60_000;
 
-type QueuedTicket = MatchmakingTicket & { gameId?: string };
+type QueuedTicket = MatchmakingTicket & { gameId?: string; claimedBy?: string };
 
 /**
  * Random matchmaking (2 players only). A player enqueues a ticket, then a
@@ -109,8 +107,11 @@ export const matchmakingRepository = {
     log('poll: opponent found — attempting claim', { me: me.uid, opponent: opponent.uid });
 
     // Claim the opponent's ticket atomically so no third player can grab them.
+    // We only stake a claim — we no longer invent the game id or build the game,
+    // because a client that authors the game also chooses its turn clock and
+    // starting player, which is a forced win. The server reads this claim back
+    // and creates the game itself.
     const oppRef = ref(realtimeDb, RtdbPaths.queueTicket(opponent.uid));
-    const gameId = `rnd_${me.uid}_${opponent.uid}_${Date.now()}`;
     let committed = false;
     try {
       const claim = await runTransaction(oppRef, (t: QueuedTicket | null) => {
@@ -118,9 +119,9 @@ export const matchmakingRepository = {
         // for a node we haven't synced. Returning undefined here would abort
         // without ever fetching server data, so seed the write from the snapshot
         // we already read — RTDB then re-runs with authoritative server data.
-        if (t === null) return { ...opponent, gameId };
-        if (t.gameId) return; // already claimed by someone else -> abort
-        return { ...t, gameId };
+        if (t === null) return { ...opponent, claimedBy: me.uid };
+        if (t.claimedBy || t.gameId) return; // already claimed by someone else -> abort
+        return { ...t, claimedBy: me.uid };
       });
       committed = claim.committed;
     } catch (e) {
@@ -133,34 +134,19 @@ export const matchmakingRepository = {
       return null;
     }
 
-    const players: Player[] = [buildPlayer(me, 0), buildPlayer(opponent, 1)];
-    const game = GameManager.create({ id: gameId, mode: 'random', size: me.boardSize, players });
-    try {
-      await gameRepository.createGame(game);
-      // Stamp my own ticket so my subscription resolves to the same game.
-      await set(ref(realtimeDb, RtdbPaths.queueTicket(me.uid)), { ...me, gameId });
-    } catch (e) {
-      log.error('creating game / stamping ticket FAILED', describe(e));
+    // The server verifies the claim from the tickets themselves, builds the game,
+    // and stamps the id onto both tickets — so both of us resolve to it.
+    const res = await gameFunctions.startFromMatch(opponent.uid);
+    if (!res.ok) {
+      log.error('server refused to create the match', { code: res.code });
       return null;
     }
 
-    log('MATCH MADE 🎉', { gameId, p1: me.uid, p2: opponent.uid });
-    return gameId;
+    log('MATCH MADE 🎉', { gameId: res.data.gameId, p1: me.uid, p2: opponent.uid });
+    return res.data.gameId;
   },
 };
 
-function buildPlayer(ticket: MatchmakingTicket, index: 0 | 1): Player {
-  return {
-    id: `P${index + 1}`,
-    uid: ticket.uid,
-    index,
-    displayName: ticket.displayName,
-    color: playerColors[index]!,
-    isEliminated: false,
-    consecutiveMisses: 0,
-    score: 0,
-  };
-}
 
 function describe(e: unknown): { code?: string; message: string } {
   const err = e as { code?: string; message?: string };

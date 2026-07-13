@@ -8,7 +8,7 @@ const {
   clientPut,
   getGame,
   getDue,
-  createGameAsClient,
+  startGameFromRoom,
   playMove,
   sleep,
 } = require('../lib/harness.cjs');
@@ -25,8 +25,8 @@ module.exports = {
     t.section('a move goes through the server');
     {
       const [a, b] = [await signUp(), await signUp()];
-      const status = await createGameAsClient('m1', [a, b]);
-      t.check('a client may create a pristine game', status < 400, `HTTP ${status}`);
+      const created = await startGameFromRoom('m1', [a, b]);
+      t.check('the server creates the game', created.status === 200, JSON.stringify(created.error));
 
       const res = await playMove('m1', { orientation: 'horizontal', row: 0, col: 0 }, a);
       t.check('the active player can play', res.ok, JSON.stringify(res.result ?? res.error));
@@ -40,7 +40,7 @@ module.exports = {
     t.section('the server enforces the rules — nothing is taken on trust');
     {
       const [a, b] = [await signUp(), await signUp()];
-      await createGameAsClient('m2', [a, b]);
+      await startGameFromRoom('m2', [a, b]);
 
       const outOfTurn = await playMove('m2', { orientation: 'horizontal', row: 0, col: 1 }, b);
       t.check('a player CANNOT move out of turn', !outOfTurn.ok);
@@ -68,7 +68,7 @@ module.exports = {
       // The attack this closes: write a full board claiming every box, then let
       // the server dutifully compute you the win.
       const [a, b] = [await signUp(), await signUp()];
-      await createGameAsClient('m3', [a, b]);
+      await startGameFromRoom('m3', [a, b]);
 
       const boxes = {};
       for (let i = 0; i < 9; i += 1) boxes[`b:${i}:0`] = 'P1';
@@ -95,10 +95,39 @@ module.exports = {
       );
     }
 
+    t.section('the board cannot be forged through the *move* path either');
+    {
+      // Locking down the database is not enough on its own. A fractional
+      // coordinate is in-bounds and hashes to a key no real line occupies, so the
+      // engine used to accept it as a legal move — and four of them closed a box
+      // that doesn't exist, scoring a real point and counting toward the board
+      // being full. Because the server validates with the same engine, it agreed:
+      // farm nine phantom boxes and it would finalize the game and award the win.
+      const [a, b] = [await signUp(), await signUp()];
+      await startGameFromRoom('m7', [a, b]);
+
+      const phantomEdges = [
+        { orientation: 'horizontal', row: 0.5, col: 0 },
+        { orientation: 'horizontal', row: 1.5, col: 0 },
+        { orientation: 'vertical', row: 0.5, col: 0 },
+        { orientation: 'vertical', row: 0.5, col: 1 },
+      ];
+      for (const line of phantomEdges) {
+        const res = await playMove('m7', line, a);
+        t.check(`server REFUSES a fractional edge ${line.orientation} ${line.row},${line.col}`, !res.ok);
+      }
+
+      const g = await getGame('m7');
+      t.check('no phantom line reached the board', Object.keys(g.board.lines).length === 0);
+      t.check('no phantom box was minted', Object.keys(g.board.boxes).length === 0);
+      t.check('no score was conjured', g.players.P1.score === 0);
+      t.check('the game did not finish', g.phase === 'playing');
+    }
+
     t.section('a move persists a delta, not the whole game');
     {
       const [a, b] = [await signUp(), await signUp()];
-      await createGameAsClient('m4', [a, b], 5); // bigger board => bigger game node
+      await startGameFromRoom('m4', [a, b], 5); // bigger board => bigger game node
 
       // Watch exactly which children of the game node change for one move.
       const touched = [];
@@ -129,7 +158,7 @@ module.exports = {
     t.section('a completing move finalizes in the same call');
     {
       const [a, b] = [await signUp(), await signUp()];
-      await createGameAsClient('m5', [a, b], 3);
+      await startGameFromRoom('m5', [a, b], 3);
 
       for (const line of Board.getAllLines(3)) {
         const g = await getGame('m5');
@@ -156,7 +185,7 @@ module.exports = {
     t.section('concurrency — a double-tap cannot apply twice');
     {
       const [a, b] = [await signUp(), await signUp()];
-      await createGameAsClient('m6', [a, b], 5);
+      await startGameFromRoom('m6', [a, b], 5);
 
       // Fire the identical move twice, simultaneously. The version CAS must let
       // exactly one through.

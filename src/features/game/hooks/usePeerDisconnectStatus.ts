@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { serverNow } from '@/services/firebase';
 import type { ConnectionStatus } from '@/store';
 import type { GamePresence, GameState, PlayerId } from '@/types';
 
@@ -27,7 +28,9 @@ export function usePeerDisconnectStatus(
 
   useEffect(() => {
     const tick = () => {
-      const next = computeAwayPeers(game, presence, myPlayerId, Date.now(), connection === 'online');
+      // Heartbeats are server timestamps, so staleness must be judged in server
+      // time or a skewed device would show everyone as permanently "reconnecting".
+      const next = computeAwayPeers(game, presence, myPlayerId, serverNow(), connection === 'online');
       setAwayPeers((prev) =>
         prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
       );

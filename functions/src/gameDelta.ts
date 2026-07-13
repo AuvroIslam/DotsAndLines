@@ -39,6 +39,15 @@ export function diffGamePaths(
   // The result is only ever written once, at the end, and is small — send it whole.
   if (next.result !== prev.result) updates[`${root}/result`] = next.result;
 
+  // End-of-life bookkeeping. `resultsRecorded` must ride along in the same write
+  // as the result itself, or a retried invocation could count a player's win twice.
+  if (next.resultsRecorded !== prev.resultsRecorded) {
+    updates[`${root}/resultsRecorded`] = next.resultsRecorded ?? null;
+  }
+  if (next.rematchGameId !== prev.rematchGameId) {
+    updates[`${root}/rematchGameId`] = next.rematchGameId ?? null;
+  }
+
   // Lines and boxes are only ever *added* (a drawn line is never undrawn), so a
   // key-by-key add is sufficient and no deletions are possible.
   for (const [key, owner] of Object.entries(next.board.lines)) {

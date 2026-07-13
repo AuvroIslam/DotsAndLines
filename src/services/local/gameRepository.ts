@@ -11,9 +11,14 @@ const games = new LocalCollection<GameState>();
 const presences = new LocalCollection<GamePresence>();
 
 /**
- * In-memory replica of `services/firebase/gameRepository` — same method
- * signatures, no network. Moves still go through `GameManager`, so game
- * logic is never duplicated.
+ * In-memory game store used by tests and offline play.
+ *
+ * This is deliberately *not* a mirror of `services/firebase/gameRepository` any
+ * more. The firebase one is read-only now — creating a game and applying a move
+ * are Cloud Function calls, because a client that can author game state can rig
+ * the match. Here there is no server and no adversary, so it keeps `createGame`
+ * and `applyMove` locally. Moves still run through `GameManager`, so the rules
+ * themselves are never duplicated.
  */
 export const gameRepository = {
   async createGame(state: GameState): Promise<void> {

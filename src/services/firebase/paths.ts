@@ -11,11 +11,8 @@ export const Collections = {
 } as const;
 
 export const RtdbPaths = {
-  games: 'games',
+  // Read-only from the client: game state is written exclusively by the server.
   game: (gameId: string) => `games/${gameId}`,
-  gameBoard: (gameId: string) => `games/${gameId}/board`,
-  gameLine: (gameId: string, lineKey: string) => `games/${gameId}/board/lines/${lineKey}`,
-  gamePlayer: (gameId: string, playerId: string) => `games/${gameId}/players/${playerId}`,
 
   /**
    * Live connection state, kept *out* of the game node. Heartbeats fire every
@@ -26,20 +23,10 @@ export const RtdbPaths = {
   gamePresence: (gameId: string) => `gamePresence/${gameId}`,
   gamePlayerPresence: (gameId: string, playerId: string) => `gamePresence/${gameId}/${playerId}`,
 
-  /**
-   * `gameId -> turn deadline (ms)` for every in-progress game — a due-index, so
-   * the sweep can ask "what is overdue right now?" instead of downloading every
-   * live game every minute. That's the difference between O(active games) and
-   * O(overdue games) per sweep, and at a thousand concurrent games it's the
-   * difference between pennies and hundreds of dollars of egress.
-   *
-   * It is only ever a performance hint: no result depends on it. The server
-   * re-derives the real deadline from the game itself before acting, so a stale
-   * or tampered entry can never cause a wrong verdict — at worst it makes the
-   * sweep look at a game that turns out not to be due.
-   */
-  activeGames: 'activeGames',
-  activeGame: (gameId: string) => `activeGames/${gameId}`,
+  // The game-lifecycle due-indexes (`activeGames`, `pendingResults`,
+  // `finishedGames`) are written and read only by the server — see
+  // `lifecyclePaths` in functions/src/authority.ts. Clients never touch them.
+
   rooms: 'rooms',
   room: (roomId: string) => `rooms/${roomId}`,
   roomMembers: (roomId: string) => `rooms/${roomId}/members`,

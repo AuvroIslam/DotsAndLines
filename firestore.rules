@@ -24,16 +24,24 @@ service cloud.firestore {
         allow write: if isSelf(uid) || isSelf(friendUid);
       }
 
-      // Match history is private to the owner.
+      // Match history is private to the owner, and written only by the server
+      // when it finalizes a game (see functions/src/recordResults.ts).
       match /matchHistory/{entryId} {
-        allow read, write: if isSelf(uid);
+        allow read: if isSelf(uid);
+        allow write: if false;
       }
     }
 
-    // Statistics: world-readable for leaderboards; only the owner can write.
+    // Statistics: world-readable for leaderboards, written only by the server.
+    //
+    // This was `allow write: if isSelf(uid)`, which made the leaderboard free
+    // money — anyone could write themselves nine thousand wins without playing a
+    // single game. Cheat-proof moves are worth very little next to a forgeable
+    // win record, so the result is now recorded by the Cloud Function that
+    // finalizes the match, and clients can only read it.
     match /statistics/{uid} {
       allow read: if isSignedIn();
-      allow write: if isSelf(uid);
+      allow write: if false;
     }
 
     // Settings are private to the owner.

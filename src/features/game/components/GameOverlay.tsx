@@ -12,10 +12,22 @@ interface GameOverlayProps {
   myPlayerId: string | null;
   onExit: () => void;
   onRematch?: () => void;
+  /**
+   * Set once anyone has started the rematch. Everyone is still subscribed to the
+   * finished game, so they all see this appear — which turns "Rematch" into
+   * "Join rematch" for whoever didn't press it first.
+   */
+  rematchGameId?: string | null;
 }
 
 /** Winner / draw screen shown when the game finishes. */
-export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlayProps) {
+export function GameOverlay({
+  game,
+  myPlayerId,
+  onExit,
+  onRematch,
+  rematchGameId,
+}: GameOverlayProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const result = game.result;
@@ -83,7 +95,9 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
           })}
         </View>
 
-        {onRematch ? <Button label="Rematch" onPress={onRematch} /> : null}
+        {onRematch ? (
+          <Button label={rematchGameId ? 'Join Rematch' : 'Rematch'} onPress={onRematch} />
+        ) : null}
         <Button label="Back to Home" variant="secondary" onPress={onExit} />
       </View>
     </Animated.View>

@@ -18,9 +18,11 @@
 const { Checker, db, resetDb } = require('./lib/harness.cjs');
 
 const SUITES = [
+  require('./suites/creation.cjs'),
   require('./suites/moves.cjs'),
   require('./suites/disconnect.cjs'),
   require('./suites/rooms.cjs'),
+  require('./suites/results.cjs'),
   require('./suites/scaling.cjs'),
 ];
 

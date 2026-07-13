@@ -152,4 +152,15 @@ export interface GameState {
   createdAt: number;
   updatedAt: number;
   result: GameResult | null;
+  /**
+   * Set by the server when someone starts a rematch of this (finished) game.
+   * The other players are already subscribed to this node, so this is how they
+   * hear about it — no separate invite channel needed.
+   */
+  rematchGameId?: string;
+  /**
+   * Set once the server has written match history and statistics for this game,
+   * so a retried invocation cannot double-count a player's wins or streak.
+   */
+  resultsRecorded?: boolean;
 }

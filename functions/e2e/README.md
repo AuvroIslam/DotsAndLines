@@ -26,6 +26,15 @@ system that the unit tests missed was caught here —
 - A security rule rejected a *legitimate* move, freezing every 3–4 player game
   after an elimination.
 
+And the two that made "server-authoritative" a lie until a review caught them:
+
+- A fractional coordinate (`row: 0.5`) is in bounds and hashes to a key no real
+  line occupies, so it was a *legal move*. Four of them closed a box that doesn't
+  exist, scoring a real point and counting toward the board being full — and the
+  server agreed, because it validates with the same engine.
+- The game was built on the *client*, so its creator chose the turn clock and who
+  moved first. A one-second clock handed to the opponent is a forced win.
+
 None of those are reachable from a mocked test.
 
 ## Layout
@@ -34,10 +43,12 @@ None of those are reachable from a mocked test.
 |---|---|
 | `run.cjs` | Runner. Wipes the DB between suites, aggregates results, sets the exit code. |
 | `lib/harness.cjs` | Shared plumbing: emulator wiring, auth, callables, seeding. |
+| `suites/creation.cjs` | Games are built by the server, so a host cannot rig the clock, the board or the turn order. |
 | `suites/moves.cjs` | Moves are server-authoritative: rules enforced, board unforgeable, deltas only, races rejected. |
 | `suites/disconnect.cjs` | Abandoned games resolve by missed turns, not connection state. |
 | `suites/rooms.cjs` | 3- and 4-player games, where an elimination does *not* end the match. |
-| `suites/scaling.cjs` | The structural properties: due-index reads, presence isolation, no per-move trigger. |
+| `suites/results.cjs` | Match history and stats are written by the server; a client cannot award itself a win. |
+| `suites/scaling.cjs` | Structural properties: due-index reads, presence isolation, TTL cleanup, rematch. |
 
 ## Writing a suite
 

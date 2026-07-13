@@ -5,6 +5,7 @@ import { normalizeGame } from '@/services/firebase/rtdbSerialize';
 import type { GameState, Line } from '@/types';
 
 import { diffGamePaths } from './gameDelta';
+import { recordGameResults } from './recordResults';
 
 /**
  * The server is the only writer of `games/*`. Every change — a move, a turn
@@ -36,6 +37,29 @@ export interface AuthResult {
 const MAX_CATCHUP_TURNS = 32;
 /** How many times to re-read and retry when another invocation wins the swap. */
 const MAX_CAS_ATTEMPTS = 4;
+/** How long a finished game (and its presence/membership) is kept before deletion. */
+export const FINISHED_GAME_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The index entries that track where a game is in its lifecycle. Written in the
+ * *same* atomic update as the game itself, so the two can never disagree.
+ *
+ * Each index is a due-list keyed by when it next needs attention, so every sweep
+ * costs O(games actually due) rather than O(games that exist):
+ *  - `activeGames`   -> turn deadline; drives timeouts. Cleared once finished.
+ *  - `pendingResults`-> finished games whose history/stats aren't written yet.
+ *  - `finishedGames` -> when the game may be deleted.
+ */
+function lifecyclePaths(gameId: string, state: GameState, now: number): Record<string, unknown> {
+  if (state.phase !== 'playing') {
+    return {
+      [`activeGames/${gameId}`]: null,
+      [`pendingResults/${gameId}`]: state.resultsRecorded ? null : now,
+      [`finishedGames/${gameId}`]: now + FINISHED_GAME_TTL_MS,
+    };
+  }
+  return { [`activeGames/${gameId}`]: state.turnStartedAt + state.turnDurationMs };
+}
 
 /** A pure transition. Return the next state, or null to abort with no write. */
 type Mutate = (state: GameState) => GameState | null;
@@ -89,15 +113,43 @@ export async function applyAuthoritative(
     const updates = diffGamePaths(gameId, state, versioned);
     delete updates[`games/${gameId}/version`]; // the CAS already wrote it
 
-    // Re-arm (or clear) the due-index atomically with the game itself.
-    updates[`activeGames/${gameId}`] =
-      versioned.phase === 'playing' ? versioned.turnStartedAt + versioned.turnDurationMs : null;
+    // Re-arm (or retire) the lifecycle indexes atomically with the game itself.
+    Object.assign(updates, lifecyclePaths(gameId, versioned, Date.now()));
 
     await db.ref().update(updates);
+
+    // A game that has just ended owes its players a record. Do it now so the
+    // result lands immediately, but leave `pendingResults` set until it succeeds
+    // — if this invocation dies here, the sweep picks it up rather than silently
+    // losing someone's win.
+    if (versioned.phase !== 'playing' && !versioned.resultsRecorded) {
+      await settleResults(db, gameId, versioned);
+    }
+
     return { committed: true, state: versioned, conflict: false };
   }
 
   return { committed: false, state: null, conflict: true };
+}
+
+/**
+ * Write the players' match history and statistics, then mark the game done.
+ *
+ * `resultsRecorded` and the `pendingResults` entry are cleared together, and
+ * only *after* the Firestore write succeeds — so the flag can never claim a
+ * record that isn't there. Safe to call twice: the recorder itself is keyed by
+ * game id and skips a game it has already written.
+ */
+export async function settleResults(
+  db: Database,
+  gameId: string,
+  state: GameState,
+): Promise<void> {
+  await recordGameResults(state);
+  await db.ref().update({
+    [`games/${gameId}/resultsRecorded`]: true,
+    [`pendingResults/${gameId}`]: null,
+  });
 }
 
 /** Find the player this uid controls in the game, if any. */
@@ -167,15 +219,26 @@ function catchUpExpiredTurns(state: GameState, now: number): GameState | null {
   return changed ? next : null;
 }
 
-/** Turn-clock enforcement for the sweep (no caller to authorize). */
+/**
+ * Turn-clock enforcement for the sweep (no caller to authorize).
+ *
+ * Also finalizes a completed-but-unfinished board. `playMove` writes the result
+ * in the same call that fills the board, so this should never find work — but it
+ * costs nothing to check here, and folding it in means the sweep reads each game
+ * once instead of twice. A game left behind by an older client still cannot hang.
+ */
 export async function timeoutExpiredTurns(
   db: Database,
   gameId: string,
   now: number,
 ): Promise<AuthResult> {
-  const res = await applyAuthoritative(db, gameId, (state) =>
-    state.phase === 'playing' ? catchUpExpiredTurns(state, now) : null,
-  );
+  const res = await applyAuthoritative(db, gameId, (state) => {
+    if (state.phase !== 'playing') return null;
+    if (WinChecker.isGameOver(state)) {
+      return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
+    }
+    return catchUpExpiredTurns(state, now);
+  });
   return { outcome: res.committed ? 'ok' : 'noop', state: res.state };
 }
 

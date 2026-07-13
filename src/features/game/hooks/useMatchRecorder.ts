@@ -1,60 +1,36 @@
 import { useEffect, useRef } from 'react';
 
-import { matchHistoryRepository } from '@/services/firebase';
 import { queryClient, queryKeys } from '@/services/queryClient';
-import type { GameState, MatchOutcome } from '@/types';
-import { randomId } from '@/utils';
-
-function outcomeFor(game: GameState, myPlayerId: string): MatchOutcome {
-  const result = game.result!;
-  // No-contest: everyone was eliminated, so nobody won or lost.
-  if (result.winners.length === 0) return 'draw';
-  if (result.isDraw && result.winners.includes(myPlayerId)) return 'draw';
-  return result.winners.includes(myPlayerId) ? 'win' : 'loss';
-}
+import type { GameState } from '@/types';
 
 /**
- * When a game reaches `finished`, persists exactly one match-history entry and
- * statistics update for the local player. Idempotent via a per-game guard so a
- * re-render or late snapshot can't double-count.
+ * Refreshes the local view of history and statistics when a game ends.
+ *
+ * It used to *write* them. That made the leaderboard free money: with
+ * `statistics/{uid}` owner-writable, anyone could award themselves any record
+ * they liked without playing a game at all. The Cloud Function that finalizes the
+ * match now records the outcome for every player, so all that's left here is to
+ * invalidate the caches that read it.
+ *
+ * The server may take a moment to settle the write, so refetch shortly after the
+ * game ends rather than the instant it does.
  */
-export function useMatchRecorder(
-  game: GameState | null,
-  uid: string | null,
-  myPlayerId: string | null,
-) {
-  const recorded = useRef<string | null>(null);
+export function useMatchRecorder(game: GameState | null, uid: string | null) {
+  const refreshed = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!game || !uid || !myPlayerId || game.phase !== 'finished' || !game.result) return;
-    if (recorded.current === game.id) return;
-    recorded.current = game.id;
+    if (!game || !uid || game.phase !== 'finished' || !game.result) return;
+    if (refreshed.current === game.id) return;
+    refreshed.current = game.id;
 
-    const me = game.players[myPlayerId];
-    if (!me) return;
-    const outcome = outcomeFor(game, myPlayerId);
-    const opponents = game.turnOrder
-      .filter((id) => id !== myPlayerId)
-      .map((id) => {
-        const p = game.players[id]!;
-        return { uid: p.uid, displayName: p.displayName, score: p.score };
-      });
-
-    void (async () => {
-      await matchHistoryRepository.addEntry(uid, {
-        id: randomId('mh'),
-        gameId: game.id,
-        mode: game.mode,
-        boardSize: game.board.size,
-        playerCount: game.turnOrder.length,
-        outcome,
-        myScore: me.score,
-        opponents,
-        playedAt: Date.now(),
-      });
-      await matchHistoryRepository.applyResult(uid, { outcome, boxesWon: me.score });
+    const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.matchHistory(uid) });
       queryClient.invalidateQueries({ queryKey: queryKeys.statistics(uid) });
-    })();
-  }, [game, uid, myPlayerId]);
+    };
+
+    invalidate();
+    // Once more after the server has had time to write the record.
+    const id = setTimeout(invalidate, 2_000);
+    return () => clearTimeout(id);
+  }, [game, uid]);
 }

@@ -119,6 +119,15 @@ async function clientPut(path, value, user) {
 
 const getGame = async (id) => engine.normalizeGame((await db.ref(`games/${id}`).get()).val());
 const getDue = async (id) => (await db.ref(`activeGames/${id}`).get()).val();
+const getPendingResult = async (id) => (await db.ref(`pendingResults/${id}`).get()).val();
+const getFinished = async (id) => (await db.ref(`finishedGames/${id}`).get()).val();
+
+// Match history and statistics are written by the server (Firestore Admin), so
+// the suites read them back the same way to prove the record is real.
+const firestore = admin.firestore();
+const getStats = async (uid) => (await firestore.doc(`statistics/${uid}`).get()).data() ?? null;
+const getHistory = async (uid, gameId) =>
+  (await firestore.doc(`users/${uid}/matchHistory/${gameId}`).get()).data() ?? null;
 
 /** Build a pristine game, as `GameManager.create` does for a real room. */
 function buildGame(id, users, size = 3, overrides = {}) {
@@ -153,15 +162,42 @@ async function seedGame(id, users, size = 3, overrides = {}) {
   return game;
 }
 
-/** Create a game the way a real client does — through the security rules. */
-async function createGameAsClient(id, users, size = 3) {
-  const game = buildGame(id, users, size);
+/** Seed a room with `users[0]` as host, as roomRepository would. */
+async function seedRoom(roomId, users, size = 3) {
   const members = {};
-  for (const u of users) members[u.uid] = true;
-  await db.ref(`gameMembers/${id}`).set(members);
-  const status = await clientPut(`games/${id}`, game, users[0]);
-  await clientPut(`activeGames/${id}`, game.turnStartedAt + game.turnDurationMs, users[0]);
-  return status;
+  users.forEach((u, i) => {
+    members[u.uid] = {
+      uid: u.uid,
+      displayName: `P${i + 1}`,
+      index: i,
+      isReady: true,
+      isHost: i === 0,
+      joinedAt: Date.now(),
+    };
+  });
+  await db.ref(`rooms/${roomId}`).set({
+    id: roomId,
+    code: roomId.slice(0, 6).toUpperCase(),
+    hostUid: users[0].uid,
+    mode: 'friend',
+    boardSize: size,
+    maxPlayers: users.length,
+    status: 'open',
+    members,
+    gameId: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
+/**
+ * Start a game the way a real client now does: seed a room, then ask the *server*
+ * to create the game. The client never authors game state — that's the point.
+ * Returns the callable's result.
+ */
+async function startGameFromRoom(roomId, users, size = 3) {
+  await seedRoom(roomId, users, size);
+  return callFn('createGame', { source: 'room', roomId }, users[0]);
 }
 
 /** Ask the server to play `line` for `user`. */
@@ -190,9 +226,15 @@ module.exports = {
   clientPut,
   getGame,
   getDue,
+  getPendingResult,
+  getFinished,
+  getStats,
+  getHistory,
+  firestore,
   buildGame,
   seedGame,
-  createGameAsClient,
+  seedRoom,
+  startGameFromRoom,
   playMove,
   firstFreeLine,
   expireTurn,

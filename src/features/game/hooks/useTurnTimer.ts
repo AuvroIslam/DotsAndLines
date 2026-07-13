@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { gameFunctions } from '@/services/firebase';
+import { gameFunctions, serverNow } from '@/services/firebase';
 import type { GameState } from '@/types';
 
 /**
@@ -27,11 +27,20 @@ export function useTurnTimer(game: GameState | null) {
     const turnKey = `${game.currentTurn}:${game.turnStartedAt}`;
 
     const tick = () => {
-      const remaining = Math.max(0, deadline - Date.now());
+      // `deadline` is a server timestamp, so it must be compared against server
+      // time — a skewed device clock would otherwise show every turn as already
+      // expired, or never expiring at all.
+      const remaining = Math.max(0, deadline - serverNow());
       setRemainingMs(remaining);
       if (remaining === 0 && timeoutFired.current !== turnKey) {
         timeoutFired.current = turnKey;
-        void gameFunctions.timeoutTurn(game.id);
+        void gameFunctions.timeoutTurn(game.id).then((res) => {
+          // Clear the guard if the request didn't land, so the next tick retries.
+          // Leaving it set would strand the turn: if the *absent* player is the
+          // one on the clock, no other client will ask, and the game would sit
+          // there until the once-a-minute sweep happened to notice.
+          if (!res.ok && timeoutFired.current === turnKey) timeoutFired.current = null;
+        });
       }
     };
 

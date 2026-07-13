@@ -14,7 +14,7 @@ export interface LiveGame {
   connection: ReturnType<typeof useGameStore.getState>['connection'];
   pendingLines: Set<string>;
   makeMove: (line: Line) => void;
-  forfeit: () => Promise<void>;
+  forfeit: () => Promise<boolean>;
 }
 
 /**

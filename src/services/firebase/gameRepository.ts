@@ -1,4 +1,4 @@
-import { get, onValue, ref, serverTimestamp, set, update } from 'firebase/database';
+import { get, onValue, ref, serverTimestamp, update } from 'firebase/database';
 
 import type { GamePresence, GameState, PlayerId } from '@/types';
 
@@ -7,15 +7,14 @@ import { realtimeDb } from './config';
 import { RtdbPaths } from './paths';
 import { normalizeGame, normalizePresence } from './rtdbSerialize';
 
-const deadlineOf = (state: GameState) => state.turnStartedAt + state.turnDurationMs;
 
 /**
  * Read-side access to a game, plus presence.
  *
- * Clients can no longer *write* game state at all — security rules allow only
- * the creation of a pristine, unplayed game, and nothing after that. Every
- * change (moves included) goes through a Cloud Function, so the board, the
- * scores and the turn order cannot be forged. See `gameFunctions`.
+ * Clients cannot write game state at all — not a move, not a result, not even
+ * the game itself: security rules deny `games/*` outright, and creation is a
+ * server call. Every change goes through a Cloud Function, so the board, the
+ * scores, the turn order and the clock cannot be forged. See `gameFunctions`.
  *
  * Two things deliberately live outside the game node:
  *  - presence (`gamePresence/…`), because heartbeats would otherwise rewrite the
@@ -24,16 +23,6 @@ const deadlineOf = (state: GameState) => state.turnStartedAt + state.turnDuratio
  *    games without reading every live one.
  */
 export const gameRepository = {
-  async createGame(state: GameState): Promise<void> {
-    // Membership index lets RTDB security rules authorize writers by uid
-    // without iterating the players map.
-    const memberUids: Record<string, boolean> = {};
-    for (const p of Object.values(state.players)) memberUids[p.uid] = true;
-    await set(ref(realtimeDb, `gameMembers/${state.id}`), memberUids);
-    await set(ref(realtimeDb, RtdbPaths.game(state.id)), state);
-    await set(ref(realtimeDb, RtdbPaths.activeGame(state.id)), deadlineOf(state));
-  },
-
   async getGame(gameId: string): Promise<GameState | null> {
     const snap = await get(ref(realtimeDb, RtdbPaths.game(gameId)));
     return normalizeGame(snap.val() as GameState | null);

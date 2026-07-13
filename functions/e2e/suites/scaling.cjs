@@ -119,5 +119,70 @@ module.exports = {
       t.check('the winner came from the real board', (g.result?.winners ?? []).length >= 1);
       t.check('the finished game left the due-index', (await getDue('fin')) === null);
     }
+
+    t.section('finished games are eventually deleted');
+    {
+      // Without a TTL, every game ever played is kept forever — and so is its
+      // membership index and everyone's presence records.
+      const users = [await signUp(), await signUp()];
+      await seedGame('ttl', users);
+      await callFn('forfeitGame', { gameId: 'ttl' }, users[0]); // end it
+      await db.ref('gamePresence/ttl/P1').set({ isConnected: true, lastSeenAt: Date.now() });
+
+      t.check('it is queued for deletion, not deleted yet', typeof (await db.ref('finishedGames/ttl').get()).val() === 'number');
+      t.check('the game is still readable for now', (await getGame('ttl')) !== null);
+
+      // Backdate it past the TTL and run the janitor's deletion step.
+      await db.ref('finishedGames/ttl').set(Date.now() - 1000);
+      const expired = Object.keys(
+        (await db.ref('finishedGames').orderByValue().endAt(Date.now()).once('value')).val() ?? {},
+      );
+      t.check('the expired game shows up as due', expired.includes('ttl'));
+
+      await db.ref().update({
+        'games/ttl': null,
+        'gameMembers/ttl': null,
+        'gamePresence/ttl': null,
+        'activeGames/ttl': null,
+        'pendingResults/ttl': null,
+        'finishedGames/ttl': null,
+      });
+
+      t.check('the game is gone', (await getGame('ttl')) === null);
+      t.check('its membership index is gone', (await db.ref('gameMembers/ttl').get()).val() === null);
+      t.check('its presence records are gone', (await db.ref('gamePresence/ttl').get()).val() === null);
+      t.check('it is out of every index', (await db.ref('finishedGames/ttl').get()).val() === null);
+    }
+
+    t.section('rematch: same players, new game, announced on the old one');
+    {
+      const users = [await signUp(), await signUp()];
+      await seedGame('rm', users);
+      await callFn('forfeitGame', { gameId: 'rm' }, users[0]);
+
+      const res = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[1]);
+      t.check('a player can start a rematch', res.status === 200, JSON.stringify(res.error));
+
+      const newId = res.result.gameId;
+      const fresh = await getGame(newId);
+      t.check('the new game is live', fresh.phase === 'playing');
+      t.check('same players', Object.values(fresh.players).map((p) => p.uid).sort().join() === users.map((u) => u.uid).sort().join());
+      t.check('a fresh board', Object.keys(fresh.board.lines).length === 0);
+      t.check(
+        'the loser of the coin-toss goes first this time (order rotated)',
+        fresh.players.P1.uid === users[1].uid,
+        fresh.players.P1.uid,
+      );
+
+      const old = await getGame('rm');
+      t.check('the OLD game announces it, so the opponent just sees it', old.rematchGameId === newId);
+
+      const again = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[0]);
+      t.check('the other player joins the same rematch, not a second one', again.result?.gameId === newId);
+
+      const stranger = await signUp();
+      const denied = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, stranger);
+      t.check('a stranger cannot rematch a game they never played', denied.status >= 400);
+    }
   },
 };

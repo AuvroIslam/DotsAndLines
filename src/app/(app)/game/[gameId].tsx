@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Loader, Typography } from '@/components/ui';
+import { Button, EmptyState, Loader, Typography } from '@/components/ui';
 import {
   ConnectionBanner,
   GameBoard,
@@ -20,6 +20,7 @@ import {
 } from '@/features/game';
 import { Routes } from '@/navigation/routes';
 import { haptics, sound } from '@/services/feedback';
+import { gameFunctions } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
@@ -45,9 +46,14 @@ export default function GameScreen() {
   } = live;
   const { fraction } = useTurnTimer(game);
   useConnectionMonitor(!!game);
-  useMatchRecorder(game, uid, myPlayerId);
+  useMatchRecorder(game, uid);
   useTrackPlayerConnection(gameId, myPlayerId);
   const { awayPeers } = usePeerDisconnectStatus(game, presence, myPlayerId, connection);
+
+  // Distinguishes "still loading" from "gone": once we've seen the game, a null
+  // snapshot means it was deleted, not that we're waiting on the first read.
+  const everLoaded = useRef(false);
+  if (game) everLoaded.current = true;
 
   // Feedback driven by authoritative board deltas, so every player feels moves.
   const prevLines = useRef(0);
@@ -75,7 +81,20 @@ export default function GameScreen() {
     }
   }, [game?.phase, game?.result, myPlayerId]);
 
-  if (!game) return <Loader message="Joining game…" />;
+  // A game we've never seen is still loading; one that has *gone* was deleted
+  // (finished games are cleaned up after a day) or never existed at all. Without
+  // this the screen sat on "Joining game…" forever.
+  if (!game) {
+    if (!everLoaded.current) return <Loader message="Joining game…" />;
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.boardArea}>
+          <EmptyState emoji="🏁" title="This game has ended" subtitle="It was finished or removed." />
+          <Button label="Back to Home" onPress={() => router.replace(Routes.home)} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const handleLeave = () => {
     if (!myPlayerId || game.phase !== 'playing') {
@@ -89,12 +108,26 @@ export default function GameScreen() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            await forfeit();
-            router.replace(Routes.home);
+            try {
+              await forfeit();
+            } finally {
+              // Leave regardless. If the forfeit request failed we still take the
+              // player out of the game they chose to leave — the turn clock will
+              // resolve the match for them. Stranding them on a board they've quit,
+              // with a button that silently did nothing, is the worse outcome.
+              router.replace(Routes.home);
+            }
           })();
         },
       },
     ]);
+  };
+
+  const handleRematch = () => {
+    void (async () => {
+      const res = await gameFunctions.startRematch(gameId);
+      if (res.ok) router.replace(Routes.game(res.data.gameId));
+    })();
   };
 
   const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
@@ -145,6 +178,11 @@ export default function GameScreen() {
           game={game}
           myPlayerId={myPlayerId}
           onExit={() => router.replace(Routes.home)}
+          // If someone already started the rematch, everyone still watching this
+          // node sees `rematchGameId` appear and joins it — no invite channel
+          // needed, because they're all subscribed here already.
+          rematchGameId={game.rematchGameId ?? null}
+          onRematch={handleRematch}
         />
       ) : null}
     </SafeAreaView>

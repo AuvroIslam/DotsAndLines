@@ -4,16 +4,18 @@ import { logger, setGlobalOptions } from 'firebase-functions/v2';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
-import type { Line } from '@/types';
+import { normalizeGame } from '@/services/firebase/rtdbSerialize';
+import type { GameState, Line } from '@/types';
 
 import {
-  finalizeIfComplete,
   forfeitByUid,
   playMoveByUid,
+  settleResults,
   timeoutExpiredTurns,
   timeoutExpiredTurnsByMember,
   type ActionOutcome,
 } from './authority';
+import { createGameFromMatch, createGameFromRoom, createRematch } from './createGame';
 
 // Callables must resolve from the region the client asks for (see `getFunctions`
 // in services/firebase/config). There are deliberately no RTDB triggers: a
@@ -34,7 +36,7 @@ initializeApp(
 
 const db = () => getDatabase();
 
-/** How many overdue games one sweep will process. Bounds a single run's work. */
+/** How many entries one sweep will process from each due-index. */
 const SWEEP_BATCH = 250;
 
 /** Shared auth/argument checking for every callable. */
@@ -57,11 +59,55 @@ function rejectIf(outcome: ActionOutcome): void {
 }
 
 /**
+ * Create a game.
+ *
+ * The client says which room it wants to start, which opponent it claimed, or
+ * which finished game to rematch — never *what the game is*. The board size,
+ * clock, starting player and player list are all derived here from state the
+ * client cannot write, which is what stops a host from handing themselves a
+ * forced win by shipping a one-second turn clock.
+ */
+export const createGame = onCall<{
+  source?: 'room' | 'match' | 'rematch';
+  roomId?: string;
+  opponentUid?: string;
+  fromGameId?: string;
+}>(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
+
+  const { source, roomId, opponentUid, fromGameId } = request.data ?? {};
+  let res;
+
+  if (source === 'room' && roomId) {
+    res = await createGameFromRoom(db(), uid, roomId);
+  } else if (source === 'match' && opponentUid) {
+    res = await createGameFromMatch(db(), uid, opponentUid);
+  } else if (source === 'rematch' && fromGameId) {
+    res = await createRematch(db(), uid, fromGameId);
+  } else {
+    throw new HttpsError('invalid-argument', 'A valid source and its target are required.');
+  }
+
+  if (!res.ok) {
+    if (res.reason === 'not_allowed') {
+      throw new HttpsError('permission-denied', 'Not allowed to start this game.');
+    }
+    if (res.reason === 'not_found') throw new HttpsError('not-found', 'Nothing to start.');
+    throw new HttpsError('failed-precondition', res.reason);
+  }
+
+  logger.info('game created', { gameId: res.gameId, source, uid });
+  return { gameId: res.gameId };
+});
+
+/**
  * Play a move. This is the *only* way game state ever changes: clients cannot
- * write to `games/*` at all, so the board, the scores and the turn order are no
- * longer forgeable. The engine re-validates everything here — whose turn it is,
- * whether the line is free, whether the player is still in the game — and if the
- * move completes the board, the result is written in this same call.
+ * write to `games/*` at all, so the board, the scores and the turn order are not
+ * forgeable. The engine re-validates everything here — whose turn it is, whether
+ * the line is a real edge and still free, whether the player is still in the
+ * game — and if the move completes the board, the result is written in this same
+ * call.
  */
 export const playMove = onCall<{ gameId?: string; line?: Line }>(async (request) => {
   const [uid, gameId] = requireCaller(request.auth, request.data?.gameId);
@@ -73,6 +119,9 @@ export const playMove = onCall<{ gameId?: string; line?: Line }>(async (request)
     throw new HttpsError('invalid-argument', 'line.orientation must be horizontal or vertical.');
   }
 
+  // Note: coordinates are *not* range/integer-checked here on purpose. The
+  // engine's MoveValidator is the single source of legality shared with the
+  // client, so a duplicate check here could drift out of step with it.
   const res = await playMoveByUid(db(), gameId, uid, line, Date.now());
   rejectIf(res.outcome);
   // A rejected move is a normal outcome (a stale tap, a raced line), not an
@@ -101,49 +150,84 @@ export const forfeitGame = onCall<{ gameId?: string }>(async (request) => {
   return { ok: res.outcome === 'ok' };
 });
 
+/** Read the ids currently due in one of the lifecycle indexes. */
+async function dueIn(index: string, by: number): Promise<string[]> {
+  const snap = await db()
+    .ref(index)
+    .orderByValue()
+    .endAt(by)
+    .limitToFirst(SWEEP_BATCH)
+    .once('value');
+  return Object.keys((snap.val() as Record<string, number> | null) ?? {});
+}
+
 /**
- * Backstop for games nobody is connected to.
+ * The janitor. Everything time-based that no client is around to drive.
  *
- * While a player is present their client asks for a timeout the moment a clock
- * runs out, so this is not the fast path — it exists for when *everyone* has
- * gone and no client is left to ask.
- *
- * It reads the `activeGames` due-index (`gameId -> turn deadline`) and pulls only
- * the games actually overdue, rather than every live game. Sweep cost therefore
- * tracks the number of *overdue* games, not the number of *active* ones, so a
- * thousand healthy games in progress cost essentially nothing to sweep past.
+ * Each step reads a due-index rather than scanning games, so the cost tracks the
+ * work actually outstanding — a thousand healthy games in progress cost nothing
+ * to sweep past.
  */
 export const sweepAbandonedGames = onSchedule(
   { schedule: 'every 1 minutes', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
-    const due = await db()
-      .ref('activeGames')
-      .orderByValue()
-      .endAt(Date.now())
-      .limitToFirst(SWEEP_BATCH)
-      .once('value');
+    const now = Date.now();
 
-    const overdue = due.val() as Record<string, number> | null;
-    if (!overdue) return;
-
-    const ids = Object.keys(overdue);
-    logger.info('sweeping overdue games', { count: ids.length });
-
+    // 1. Abandoned games. The fast path is a present player's client asking for
+    //    the timeout the moment a clock runs out; this is for when everyone has
+    //    gone and there is no client left to ask.
+    const overdue = await dueIn('activeGames', now);
+    if (overdue.length) logger.info('sweeping overdue games', { count: overdue.length });
     await Promise.all(
-      ids.map(async (gameId) => {
+      overdue.map(async (gameId) => {
         try {
-          // Finalize first: a full board is a finished game, not an idle one.
-          // With server-side moves this should never fire, but a game left
-          // behind by an older client still must not hang.
-          const finalized = await finalizeIfComplete(db(), gameId, Date.now());
-          if (finalized.outcome === 'ok') {
-            logger.info('finalized a completed board', { gameId });
+          const res = await timeoutExpiredTurns(db(), gameId, Date.now());
+          if (res.outcome === 'ok') logger.info('applied overdue turn timeouts', { gameId });
+        } catch (err) {
+          logger.error('timeout sweep failed', { gameId, err });
+        }
+      }),
+    );
+
+    // 2. Results owed. Normally written the instant a game ends; this catches a
+    //    game whose invocation died between finishing and recording, so nobody
+    //    silently loses a win.
+    const owed = await dueIn('pendingResults', now);
+    if (owed.length) logger.info('settling owed results', { count: owed.length });
+    await Promise.all(
+      owed.map(async (gameId) => {
+        try {
+          const game = normalizeGame(
+            (await db().ref(`games/${gameId}`).get()).val() as GameState | null,
+          );
+          if (!game?.result) {
+            await db().ref(`pendingResults/${gameId}`).remove(); // nothing to record
             return;
           }
-          const timed = await timeoutExpiredTurns(db(), gameId, Date.now());
-          if (timed.outcome === 'ok') logger.info('applied overdue turn timeouts', { gameId });
+          await settleResults(db(), gameId, game);
+          logger.info('settled results', { gameId });
         } catch (err) {
-          logger.error('sweep failed', { gameId, err });
+          logger.error('result settling failed', { gameId, err });
+        }
+      }),
+    );
+
+    // 3. Expired games. Without this, every game ever played is kept forever.
+    const expired = await dueIn('finishedGames', now);
+    if (expired.length) logger.info('deleting expired games', { count: expired.length });
+    await Promise.all(
+      expired.map(async (gameId) => {
+        try {
+          await db().ref().update({
+            [`games/${gameId}`]: null,
+            [`gameMembers/${gameId}`]: null,
+            [`gamePresence/${gameId}`]: null,
+            [`activeGames/${gameId}`]: null,
+            [`pendingResults/${gameId}`]: null,
+            [`finishedGames/${gameId}`]: null,
+          });
+        } catch (err) {
+          logger.error('game deletion failed', { gameId, err });
         }
       }),
     );
