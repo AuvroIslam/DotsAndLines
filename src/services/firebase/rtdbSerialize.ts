@@ -77,6 +77,10 @@ export function normalizeGame(raw: GameState | null | undefined): GameState | nu
   if (!raw) return null;
   return {
     ...raw,
+    // A game written before versioning existed reads back with no version; it
+    // must default to a number or the server's compare-and-swap would compare
+    // against `undefined` and never match.
+    version: raw.version ?? 0,
     board: normalizeBoard(raw.board, raw.board?.size ?? 3),
     players: normalizePlayers(raw.players),
     turnOrder: raw.turnOrder ?? [],

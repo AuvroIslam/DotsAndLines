@@ -1,39 +1,27 @@
-import {
-  get,
-  onValue,
-  ref,
-  remove,
-  runTransaction,
-  serverTimestamp,
-  set,
-  update,
-} from 'firebase/database';
+import { get, onValue, ref, serverTimestamp, set, update } from 'firebase/database';
 
-import { GameManager } from '@/gameEngine';
-import type { GamePresence, GameState, Line, PlayerId } from '@/types';
+import type { GamePresence, GameState, PlayerId } from '@/types';
 
 import { trackRefConnection } from './connectionTracking';
 import { realtimeDb } from './config';
 import { RtdbPaths } from './paths';
 import { normalizeGame, normalizePresence } from './rtdbSerialize';
 
-export type ApplyMoveResult =
-  { ok: true; state: GameState } | { ok: false; reason: 'rejected' | 'not_found' };
-
 const deadlineOf = (state: GameState) => state.turnStartedAt + state.turnDurationMs;
 
 /**
- * Authoritative game state lives in Realtime Database. Moves are applied through
- * a transaction that re-runs the *same pure engine* the client uses optimistically,
- * so the server is the single source of truth and illegal/raced moves are rejected
- * atomically (only one of two simultaneous edits to the same line can win).
+ * Read-side access to a game, plus presence.
  *
- * Three things deliberately live *outside* the game node:
+ * Clients can no longer *write* game state at all — security rules allow only
+ * the creation of a pristine, unplayed game, and nothing after that. Every
+ * change (moves included) goes through a Cloud Function, so the board, the
+ * scores and the turn order cannot be forged. See `gameFunctions`.
+ *
+ * Two things deliberately live outside the game node:
  *  - presence (`gamePresence/…`), because heartbeats would otherwise rewrite the
  *    game every few seconds and push a snapshot to every subscriber;
  *  - the turn-deadline index (`activeGames/…`), so the server can find overdue
- *    games without reading every live one;
- *  - any terminal state, which only Cloud Functions may write.
+ *    games without reading every live one.
  */
 export const gameRepository = {
   async createGame(state: GameState): Promise<void> {
@@ -65,38 +53,6 @@ export const gameRepository = {
     return onValue(node, (snap) => cb(normalizePresence(snap.val() as GamePresence | null)));
   },
 
-  async applyMove(gameId: string, line: Line, playerId: PlayerId): Promise<ApplyMoveResult> {
-    const node = ref(realtimeDb, RtdbPaths.game(gameId));
-    const now = Date.now();
-
-    const tx = await runTransaction(node, (current: GameState | null) => {
-      const state = normalizeGame(current);
-      if (!state) return current; // abort: nothing to play on
-      const outcome = GameManager.applyMove(state, line, playerId, now);
-      if (!outcome.ok) return; // abort transaction (undefined) on illegal move
-      // A client never persists a terminal state — the server's `finalizeGame`
-      // is the sole writer of `finished`/`result`. Persist the completing move
-      // but leave the phase 'playing' (RTDB rules reject anything else); the
-      // store then asks the server to finalize, which re-checks the board itself.
-      if (outcome.state.phase === 'finished') {
-        return { ...outcome.state, phase: 'playing', result: null };
-      }
-      return outcome.state;
-    });
-
-    if (!tx.committed) {
-      const exists = (await get(node)).exists();
-      return { ok: false, reason: exists ? 'rejected' : 'not_found' };
-    }
-
-    const state = normalizeGame(tx.snapshot.val() as GameState)!;
-    // Refresh the due-index so the sweep knows when this turn expires. Only a
-    // hint — the server re-derives the real deadline before acting on it — so a
-    // failure here can't corrupt a result, it just delays a backstop.
-    void set(ref(realtimeDb, RtdbPaths.activeGame(gameId)), deadlineOf(state));
-    return { ok: true, state };
-  },
-
   /**
    * Track this client's connection for one player within one game, using
    * `.info/connected` + `onDisconnect` so a graceful disconnect (app kill) is
@@ -124,9 +80,4 @@ export const gameRepository = {
     });
   },
 
-  async deleteGame(gameId: string): Promise<void> {
-    await remove(ref(realtimeDb, RtdbPaths.game(gameId)));
-    await remove(ref(realtimeDb, RtdbPaths.activeGame(gameId)));
-    await remove(ref(realtimeDb, RtdbPaths.gamePresence(gameId)));
-  },
 };

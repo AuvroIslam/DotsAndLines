@@ -16,6 +16,7 @@
     "firebase-functions": "^6.1.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.14.0",
     "esbuild": "^0.24.0",
     "firebase-tools": "^15.22.4",

@@ -10,6 +10,7 @@ function buildState(size: BoardSize, drawnLines: Line[]): GameState {
   const ps = players(2);
   return {
     id: 'test',
+    version: 0,
     mode: 'friend',
     phase: 'playing',
     board,

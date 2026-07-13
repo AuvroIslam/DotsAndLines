@@ -35,19 +35,6 @@ function resolveMyPlayerId(game: GameState | null, uid: string | null): PlayerId
   return me?.id ?? null;
 }
 
-/**
- * Clients never *persist* a terminal state — `finalizeGame` on the server owns
- * that — so the winning move lands as a full board that is still `playing` for
- * the second or so until the server catches up. Rendering that literally would
- * flash the game-over screen away and back again, so present a complete board
- * as finished right now. The result is derived from the board by the very same
- * engine the server runs, so this can't disagree with what lands moments later;
- * it's a display projection, never written back.
- */
-function withDerivedFinish(game: GameState | null): GameState | null {
-  if (!game || game.phase !== 'playing' || !WinChecker.isGameOver(game)) return game;
-  return { ...game, phase: 'finished', result: WinChecker.getResult(game) };
-}
 
 /**
  * Drives a single live game. Renders authoritative RTDB state, but applies the
@@ -80,8 +67,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       error: null,
     });
 
-    unsubscribe = gameRepository.subscribe(gameId, (server) => {
-      const game = withDerivedFinish(server);
+    unsubscribe = gameRepository.subscribe(gameId, (game) => {
       set((s) => ({
         game,
         myPlayerId: resolveMyPlayerId(game, s.myUid),
@@ -119,36 +105,32 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (!game || !myPlayerId || !gameId) return;
 
     // Local legality gate — avoids a pointless round trip and bad optimistic UI.
+    // Not a security check: the server re-validates everything regardless.
     const validation = GameManager.validateMove(game, line, myPlayerId);
     if (!validation.valid) {
       set({ error: validation.reason });
       return;
     }
 
+    // Show the move immediately through the same engine the server will run, so
+    // routing writes through a Cloud Function costs no perceived latency. The
+    // authoritative snapshot reconciles a moment later — confirming this, or
+    // silently correcting it if the server disagreed.
     const optimistic = GameManager.applyMove(game, line, myPlayerId);
     if (optimistic.ok) {
-      const key = lineToKey(line);
       set((s) => ({
         game: optimistic.state,
-        pendingLines: new Set(s.pendingLines).add(key),
+        pendingLines: new Set(s.pendingLines).add(lineToKey(line)),
         error: null,
       }));
     }
 
-    const res = await gameRepository.applyMove(gameId, line, myPlayerId);
-    if (!res.ok) {
-      // Roll back to authoritative state; the live subscription will also refresh.
+    const accepted = await gameFunctions.playMove(gameId, line);
+    if (!accepted) {
+      // The server refused it — a stale tap, or someone took the line first.
+      // Roll back to authoritative state; the subscription will also refresh.
       const fresh = await gameRepository.getGame(gameId);
       set({ game: fresh, pendingLines: new Set(), error: 'move_rejected' });
-      return;
-    }
-
-    // That move may have filled the board. Clients can't write a terminal state,
-    // so ask the server to finalize — purely so the result lands now instead of
-    // waiting for the sweep. The server re-derives completeness from the real
-    // board and ignores us if we're wrong, so this is a hint, never a claim.
-    if (WinChecker.isGameOver(res.state)) {
-      void gameFunctions.finalize(gameId);
     }
   },
 

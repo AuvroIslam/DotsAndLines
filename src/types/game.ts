@@ -129,6 +129,17 @@ export interface GameResult {
 /** Full game snapshot as stored in Realtime Database. */
 export interface GameState {
   id: string;
+  /**
+   * Optimistic-concurrency token, bumped by the server on every authoritative
+   * write. Purely a persistence concern — the engine never reads it.
+   *
+   * Writes used to be guarded by a whole-node RTDB transaction, which is exactly
+   * what forced every move to rewrite (and re-broadcast) the entire game. The
+   * server now compare-and-swaps this instead, then persists only the fields
+   * that actually changed. Two racing moves cannot both win the swap, so a
+   * double-tap or a stale client is rejected rather than applied twice.
+   */
+  version: number;
   mode: GameMode;
   phase: GamePhase;
   board: BoardState;

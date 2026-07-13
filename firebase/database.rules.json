@@ -13,33 +13,25 @@
     "games": {
       "$gameId": {
         ".read": "auth != null",
-        ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
 
-        "phase": {
-          ".validate": "newData.val() === 'waiting' || newData.val() === 'playing'"
-        },
-        "result": {
-          ".validate": false
-        },
+        ".write": "auth != null && !data.exists() && newData.exists() && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
+
+        ".validate": "newData.hasChildren(['id', 'board', 'players', 'turnOrder', 'currentTurn']) && newData.child('phase').val() === 'playing' && newData.child('version').val() === 0 && !newData.child('result').exists() && !newData.child('board/lines').exists() && !newData.child('board/boxes').exists()",
 
         "players": {
           "$playerId": {
-            "isEliminated": {
-              ".validate": "newData.isBoolean() && (newData.val() === false || newData.val() === data.val())"
-            },
-            "consecutiveMisses": {
-              ".validate": "newData.isNumber() && (newData.val() === 0 || newData.val() === data.val())"
-            }
+            "score": { ".validate": "newData.val() === 0" },
+            "consecutiveMisses": { ".validate": "newData.val() === 0" },
+            "isEliminated": { ".validate": "newData.val() === false" }
           }
-        },
-        ".validate": "newData.hasChildren(['id', 'board', 'players', 'turnOrder', 'currentTurn'])"
+        }
       }
     },
 
     "activeGames": {
       ".indexOn": ".value",
       "$gameId": {
-        ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
+        ".write": "auth != null && !data.exists() && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
         ".validate": "newData.isNumber()"
       }
     },

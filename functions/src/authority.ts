@@ -1,79 +1,158 @@
-import type { Reference } from 'firebase-admin/database';
+import type { Database, Reference } from 'firebase-admin/database';
 
 import { GameManager, WinChecker } from '@/gameEngine';
 import { normalizeGame } from '@/services/firebase/rtdbSerialize';
-import type { GameState } from '@/types';
+import type { GameState, Line } from '@/types';
+
+import { diffGamePaths } from './gameDelta';
 
 /**
- * Server-side game-ending logic. Every function here runs the *same pure engine*
- * the client uses, inside an RTDB transaction, so the server is the single
- * authority for any terminal state while staying rule-for-rule identical to the
- * optimistic client. All game-ending writes (turn timeout, explicit forfeit,
- * normal completion) flow through this module.
+ * The server is the only writer of `games/*`. Every change — a move, a turn
+ * timeout, a forfeit — runs the *same pure engine* the client uses, so client
+ * and server can never disagree about the rules, and nothing a client sends is
+ * taken on trust: the board, the turn and the clock are all re-derived here from
+ * authoritative state.
  *
- * Note there is deliberately no presence-based forfeit: a network drop, a
- * backgrounded app and an idle player look identical from here, so none of them
- * end a match directly. They simply cost the player turns, and a player who
- * misses enough turns in a row is eliminated. Presence (`isConnected`,
- * heartbeats) is cosmetic — it drives the "reconnecting…" banner and nothing
- * else, so it can never be gamed to steal or stall a result.
+ * Writes are guarded by a compare-and-swap on `version` rather than a whole-node
+ * transaction. A transaction would have to rewrite (and re-broadcast) the entire
+ * game on every move; CAS lets us persist only the handful of fields that
+ * actually changed. Two racing invocations cannot both win the swap, so a
+ * double-tap or a stale client is rejected instead of applied twice.
  *
- * Each `transaction` update fn returns `undefined` to abort (no write) — the
- * same convention the client repository uses — so a no-op or an invalid state
- * never rewrites the node.
+ * There is deliberately no presence-based forfeit: a network drop, a
+ * backgrounded app and an idle player are indistinguishable from here, so none
+ * of them end a match directly. They cost the player turns, and a player who
+ * misses enough in a row is eliminated.
  */
 
-export type ActionOutcome = 'ok' | 'not_member' | 'noop';
+export type ActionOutcome = 'ok' | 'not_member' | 'noop' | 'rejected' | 'conflict';
 
-/** Result of an authority write: did it commit, and what does the game look like now? */
-export interface TxResult {
-  committed: boolean;
+export interface AuthResult {
+  outcome: ActionOutcome;
   state: GameState | null;
 }
 
 /** Safety bound so a long-abandoned game can never spin the catch-up loop. */
 const MAX_CATCHUP_TURNS = 32;
+/** How many times to re-read and retry when another invocation wins the swap. */
+const MAX_CAS_ATTEMPTS = 4;
+
+/** A pure transition. Return the next state, or null to abort with no write. */
+type Mutate = (state: GameState) => GameState | null;
 
 /**
  * The Admin SDK first calls a transaction's update fn with the *locally cached*
- * value, and if nothing keeps that cache warm it is `null` — so returning
- * `undefined` (our abort convention) on that first pass aborts before the
- * server value is ever read, silently dropping a legitimate action. Holding a
- * live `on('value')` listener across the transaction keeps the current state
- * synced into the cache, so the first update-fn call sees the real value.
+ * value, and if nothing keeps that cache warm it is `null` — so an abort on that
+ * first pass would fire before the server value was ever read. Holding a live
+ * listener across the transaction keeps the current value synced into the cache.
  */
-async function primedTransaction(
-  ref: Reference,
-  update: (current: GameState | null) => GameState | undefined,
-): Promise<TxResult> {
+async function casVersion(ref: Reference, expected: number): Promise<boolean> {
   const listener = ref.on('value', () => {});
   try {
-    await ref.once('value'); // wait for the listener to sync current data
-    const res = await ref.transaction(update);
-    // The snapshot holds the current value either way, so callers can resync the
-    // deadline index from the real post-write state rather than guessing.
-    return { committed: res.committed, state: normalizeGame(res.snapshot.val() as GameState) };
+    await ref.once('value');
+    const res = await ref.transaction((current: number | null) => {
+      if ((current ?? 0) !== expected) return undefined; // someone else moved first
+      return expected + 1;
+    });
+    return res.committed;
   } finally {
     ref.off('value', listener);
   }
 }
 
 /**
- * Apply every turn whose clock has already expired, attributing each missed
- * turn to the player it belonged to. Replaying elapsed windows (rather than
- * just advancing once) means a game nobody is connected to still resolves
- * correctly on the next sweep, instead of creeping forward one turn per minute.
+ * Read → apply the engine → compare-and-swap the version → persist the delta.
  *
- * Returns the next state, or `undefined` if nothing was due.
+ * The deadline index is updated in the *same* multi-path write as the game, so
+ * the two can never drift apart: a game is in `activeGames` exactly while it is
+ * playable, and leaves the instant it ends.
  */
-function catchUpExpiredTurns(state: GameState, now: number): GameState | undefined {
+export async function applyAuthoritative(
+  db: Database,
+  gameId: string,
+  mutate: Mutate,
+): Promise<{ committed: boolean; state: GameState | null; conflict: boolean }> {
+  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt += 1) {
+    const snap = await db.ref(`games/${gameId}`).get();
+    const state = normalizeGame(snap.val() as GameState | null);
+    if (!state) return { committed: false, state: null, conflict: false };
+
+    const next = mutate(state);
+    if (!next) return { committed: false, state, conflict: false }; // caller aborted
+
+    const versioned: GameState = { ...next, version: state.version + 1 };
+
+    // Claim the write. Losing here means another invocation committed between
+    // our read and now, so our engine result is stale — re-read and recompute.
+    if (!(await casVersion(db.ref(`games/${gameId}/version`), state.version))) continue;
+
+    const updates = diffGamePaths(gameId, state, versioned);
+    delete updates[`games/${gameId}/version`]; // the CAS already wrote it
+
+    // Re-arm (or clear) the due-index atomically with the game itself.
+    updates[`activeGames/${gameId}`] =
+      versioned.phase === 'playing' ? versioned.turnStartedAt + versioned.turnDurationMs : null;
+
+    await db.ref().update(updates);
+    return { committed: true, state: versioned, conflict: false };
+  }
+
+  return { committed: false, state: null, conflict: true };
+}
+
+/** Find the player this uid controls in the game, if any. */
+const playerOf = (state: GameState, uid: string) =>
+  Object.values(state.players).find((p) => p.uid === uid);
+
+/**
+ * Apply a move. The line, the turn, the board and the player's eligibility are
+ * all validated server-side by the engine, so a client cannot draw out of turn,
+ * redraw a line, play for someone else, or invent board state.
+ *
+ * If the move completes the board, this same call writes the final result — the
+ * game can never be left sitting complete-but-unfinished.
+ */
+export async function playMoveByUid(
+  db: Database,
+  gameId: string,
+  uid: string,
+  line: Line,
+  now: number,
+): Promise<AuthResult> {
+  let outcome: ActionOutcome = 'noop';
+
+  const res = await applyAuthoritative(db, gameId, (state) => {
+    const me = playerOf(state, uid);
+    if (!me) {
+      outcome = 'not_member';
+      return null;
+    }
+    const applied = GameManager.applyMove(state, line, me.id, now);
+    if (!applied.ok) {
+      outcome = 'rejected'; // illegal: not their turn, already drawn, eliminated…
+      return null;
+    }
+    outcome = 'ok';
+    return applied.state; // already carries phase:'finished' + result if the board filled
+  });
+
+  if (res.conflict) return { outcome: 'conflict', state: null };
+  return { outcome, state: res.state };
+}
+
+/**
+ * Apply every turn whose clock has already expired, attributing each missed turn
+ * to the player it belonged to. Replaying elapsed windows (rather than advancing
+ * once) means a game nobody is connected to still resolves on the next sweep,
+ * instead of creeping forward one turn per minute.
+ */
+function catchUpExpiredTurns(state: GameState, now: number): GameState | null {
   let next = state;
   let changed = false;
 
   for (let i = 0; i < MAX_CATCHUP_TURNS; i += 1) {
     if (next.phase !== 'playing') break;
-    // A completed board is finished, not idle — never charge a miss for the
-    // gap between the winning move and `finalizeGame` writing the result.
+    // A completed board is finished, not idle — never charge a miss for it.
     if (WinChecker.isGameOver(next)) break;
 
     const deadline = next.turnStartedAt + next.turnDurationMs;
@@ -85,119 +164,93 @@ function catchUpExpiredTurns(state: GameState, now: number): GameState | undefin
     changed = true;
   }
 
-  return changed ? next : undefined;
+  return changed ? next : null;
+}
+
+/** Turn-clock enforcement for the sweep (no caller to authorize). */
+export async function timeoutExpiredTurns(
+  db: Database,
+  gameId: string,
+  now: number,
+): Promise<AuthResult> {
+  const res = await applyAuthoritative(db, gameId, (state) =>
+    state.phase === 'playing' ? catchUpExpiredTurns(state, now) : null,
+  );
+  return { outcome: res.committed ? 'ok' : 'noop', state: res.state };
 }
 
 /**
- * Turn-clock enforcement — the mechanism that ends abandoned games. Safe for
- * any member to request and for the scheduled sweep to run: the deadline is
- * always re-checked against the server's own clock, so no client can rush it.
+ * Turn-clock enforcement requested by a player. Any member may ask — the server
+ * re-checks the deadline against its own clock, so nobody can rush it. It is
+ * deliberately not limited to the player whose turn it is: when the active
+ * player is the one who dropped, they are exactly the client who cannot ask.
  */
-export async function timeoutExpiredTurns(ref: Reference, now: number): Promise<TxResult> {
-  return primedTransaction(ref, (current) => {
-    const state = normalizeGame(current);
-    if (!state || state.phase !== 'playing') return undefined;
-    return catchUpExpiredTurns(state, now);
-  });
-}
-
-/** As above, but for a callable: verifies the requester actually plays in this game. */
 export async function timeoutExpiredTurnsByMember(
-  ref: Reference,
+  db: Database,
+  gameId: string,
   uid: string,
   now: number,
-): Promise<TxResult & { outcome: ActionOutcome }> {
+): Promise<AuthResult> {
   let outcome: ActionOutcome = 'noop';
-  const res = await primedTransaction(ref, (current) => {
-    const state = normalizeGame(current);
-    if (!state || state.phase !== 'playing') {
-      outcome = 'noop';
-      return undefined;
-    }
-    if (!Object.values(state.players).some((p) => p.uid === uid)) {
+
+  const res = await applyAuthoritative(db, gameId, (state) => {
+    if (!playerOf(state, uid)) {
       outcome = 'not_member';
-      return undefined;
+      return null;
+    }
+    if (state.phase !== 'playing') {
+      outcome = 'noop';
+      return null;
     }
     const next = catchUpExpiredTurns(state, now);
     outcome = next ? 'ok' : 'noop'; // noop: nothing was actually overdue
     return next;
   });
-  return { ...res, outcome };
+
+  if (res.conflict) return { outcome: 'conflict', state: null };
+  return { outcome, state: res.state };
 }
 
-/**
- * Write the terminal state for a normally-completed board.
- *
- * A client asks for this the moment it sees the board fill up, but its word is
- * never taken for it: the completeness check is re-derived here from the
- * authoritative board with the same `WinChecker` the engine uses, and the write
- * aborts unless the board really is full and the game really is still playing.
- * The request is a latency hint, not a claim — which is why it's safe to let any
- * member (or the sweep) make it.
- */
-export async function finalizeIfComplete(ref: Reference, now: number): Promise<TxResult> {
-  return primedTransaction(ref, (current) => {
-    const state = normalizeGame(current);
-    if (!state || state.phase !== 'playing') return undefined;
-    if (!WinChecker.isGameOver(state)) return undefined; // server decides, not the caller
-    return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
-  });
-}
-
-/** Finalize on behalf of a caller, verifying they actually play in this game. */
-export async function finalizeByMember(
-  ref: Reference,
-  uid: string,
-  now: number,
-): Promise<TxResult & { outcome: ActionOutcome }> {
-  let outcome: ActionOutcome = 'noop';
-  const res = await primedTransaction(ref, (current) => {
-    const state = normalizeGame(current);
-    if (!state) {
-      outcome = 'noop';
-      return undefined;
-    }
-    if (!Object.values(state.players).some((p) => p.uid === uid)) {
-      outcome = 'not_member';
-      return undefined;
-    }
-    if (state.phase !== 'playing' || !WinChecker.isGameOver(state)) {
-      outcome = 'noop'; // board isn't actually finished — ignore the request
-      return undefined;
-    }
-    outcome = 'ok';
-    return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
-  });
-  return { ...res, outcome };
-}
-
-/**
- * Explicit leave. Verifies the caller is a player in the game, then forfeits
- * them outright — quitting is a concession, so whoever is left simply wins.
- */
+/** Explicit leave — a concession, so whoever is left simply wins. */
 export async function forfeitByUid(
-  ref: Reference,
+  db: Database,
+  gameId: string,
   uid: string,
   now: number,
-): Promise<TxResult & { outcome: ActionOutcome }> {
+): Promise<AuthResult> {
   let outcome: ActionOutcome = 'noop';
-  const res = await primedTransaction(ref, (current) => {
-    const state = normalizeGame(current);
-    if (!state) {
-      outcome = 'noop';
-      return undefined;
-    }
-    const me = Object.values(state.players).find((p) => p.uid === uid);
+
+  const res = await applyAuthoritative(db, gameId, (state) => {
+    const me = playerOf(state, uid);
     if (!me) {
       outcome = 'not_member';
-      return undefined;
+      return null;
     }
     if (state.phase !== 'playing' || me.isEliminated) {
       outcome = 'noop';
-      return undefined;
+      return null;
     }
     outcome = 'ok';
     return GameManager.forfeit(state, me.id, now);
   });
-  return { ...res, outcome };
+
+  if (res.conflict) return { outcome: 'conflict', state: null };
+  return { outcome, state: res.state };
+}
+
+/**
+ * Backstop only. `playMoveByUid` finalizes a completed board in the same call,
+ * so this should never find work — it exists so a game written by an older
+ * client, or left behind by a crash, still can't hang forever.
+ */
+export async function finalizeIfComplete(
+  db: Database,
+  gameId: string,
+  now: number,
+): Promise<AuthResult> {
+  const res = await applyAuthoritative(db, gameId, (state) => {
+    if (state.phase !== 'playing' || !WinChecker.isGameOver(state)) return null;
+    return { ...state, phase: 'finished', result: WinChecker.getResult(state), updatedAt: now };
+  });
+  return { outcome: res.committed ? 'ok' : 'noop', state: res.state };
 }

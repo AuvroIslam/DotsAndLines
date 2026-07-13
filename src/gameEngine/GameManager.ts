@@ -48,6 +48,7 @@ export class GameManager {
 
     return {
       id: params.id,
+      version: 0,
       mode: params.mode,
       phase: 'playing',
       board: Board.create(params.size),
