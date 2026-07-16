@@ -32,6 +32,10 @@ const MAX_MISSES = 3; // keep in step with MAX_CONSECUTIVE_MISSES
 
 const engine = require('../.generated/engine.cjs');
 const authority = require('../.generated/authority.cjs');
+// Calling these directly, rather than over HTTP, is the only way to exercise two
+// invocations genuinely racing: the Functions emulator serialises requests, so a
+// concurrent `callFn` pair proves nothing about real concurrency.
+const createGame = require('../.generated/createGame.cjs');
 
 admin.initializeApp({ projectId: PROJECT, databaseURL: `http://${DB_HOST}/?ns=${NS}` });
 const db = admin.database();
@@ -218,6 +222,7 @@ module.exports = {
   db,
   engine,
   authority,
+  createGame,
   Checker,
   sleep,
   resetDb,

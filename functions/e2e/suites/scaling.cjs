@@ -5,6 +5,7 @@ const {
   db,
   engine,
   authority,
+  createGame,
   signUp,
   callFn,
   clientPut,
@@ -193,6 +194,52 @@ module.exports = {
         'and nothing of theirs is on a turn clock waiting to eliminate them',
         !theirGames.some((id) => due[id] !== undefined),
         Object.keys(due).join(),
+      );
+    }
+
+    t.section('rematch: two players agreeing at the SAME INSTANT still get a game');
+    {
+      // The bug this guards: recording the offer used to be a read-then-write.
+      // Both players tapping together each read the offers as empty, each wrote
+      // only their own, and neither saw a complete roster — so no game was ever
+      // created and both clients sat on a *disabled* "Waiting for opponent…"
+      // button, unable even to retry. The sequential test below passes happily
+      // while this one deadlocks, which is exactly why it exists.
+      const users = [await signUp(), await signUp()];
+      await seedGame('rmrace', users);
+      await callFn('forfeitGame', { gameId: 'rmrace' }, users[0]);
+
+      // Called directly, NOT over HTTP: the Functions emulator serialises
+      // requests, so a concurrent `callFn` pair runs one-after-the-other and
+      // passes even against the broken read-then-write. Driving the real
+      // function this way reproduced the deadlock 12/12 times before the fix.
+      const [a, b] = await Promise.all([
+        createGame.createRematch(db, users[0].uid, 'rmrace'),
+        createGame.createRematch(db, users[1].uid, 'rmrace'),
+      ]);
+      t.check('both requests are accepted', a.ok === true && b.ok === true);
+      t.check(
+        'exactly ONE of them is the completer — the other waits',
+        [a, b].filter((r) => r.gameId).length === 1,
+        `completers=${[a, b].filter((r) => r.gameId).length}`,
+      );
+
+      const old = await getGame('rmrace');
+      t.check('both offers were recorded — neither clobbered the other', Object.keys(old.rematchOffers ?? {}).length === 2, JSON.stringify(old.rematchOffers));
+      t.check('a rematch game WAS created despite the tie', !!old.rematchGameId, 'no game — deadlocked');
+
+      // Exactly one game, not two: a tie must not fork the players into
+      // separate matches, each waiting for an opponent who is in the other.
+      const spawned = Object.keys((await db.ref('games').get()).val() ?? {}).filter((id) =>
+        id.startsWith('rm_rmrace'),
+      );
+      t.check('exactly ONE rematch game exists, not two', spawned.length === 1, spawned.join());
+
+      const fresh = await getGame(old.rematchGameId);
+      t.check('it is live and holds both players', fresh?.phase === 'playing' && Object.keys(fresh.players).length === 2);
+      t.check(
+        'the completer was handed the very game that got stamped',
+        [a, b].find((r) => r.gameId)?.gameId === old.rematchGameId,
       );
     }
 
