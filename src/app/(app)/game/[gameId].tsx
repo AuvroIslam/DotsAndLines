@@ -52,8 +52,11 @@ export default function GameScreen() {
 
   // Distinguishes "still loading" from "gone": once we've seen the game, a null
   // snapshot means it was deleted, not that we're waiting on the first read.
-  const everLoaded = useRef(false);
-  if (game) everLoaded.current = true;
+  // Tracked per game id, not as a bare flag: navigating straight into a rematch
+  // can reuse this screen, and a flag carried over from the previous game would
+  // report the new one as "ended" before its first snapshot had even arrived.
+  const everLoaded = useRef<string | null>(null);
+  if (game) everLoaded.current = gameId;
 
   // Feedback driven by authoritative board deltas, so every player feels moves.
   const prevLines = useRef(0);
@@ -81,11 +84,22 @@ export default function GameScreen() {
     }
   }, [game?.phase, game?.result, myPlayerId]);
 
+  // The last player to accept a rematch gets the new id straight back; everyone
+  // else learns of it when `rematchGameId` appears on the finished game they are
+  // all still subscribed to. Only follow it if we actually asked — otherwise a
+  // player who declined would be dragged into the game they just turned down,
+  // which is the whole bug the offer/accept flow exists to prevent.
+  const rematchGameId = game?.rematchGameId ?? null;
+  const iOfferedRematch = !!uid && !!game?.rematchOffers?.[uid];
+  useEffect(() => {
+    if (rematchGameId && iOfferedRematch) router.replace(Routes.game(rematchGameId));
+  }, [rematchGameId, iOfferedRematch, router]);
+
   // A game we've never seen is still loading; one that has *gone* was deleted
   // (finished games are cleaned up after a day) or never existed at all. Without
   // this the screen sat on "Joining game…" forever.
   if (!game) {
-    if (!everLoaded.current) return <Loader message="Joining game…" />;
+    if (everLoaded.current !== gameId) return <Loader message="Joining game…" />;
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.boardArea}>
@@ -126,7 +140,9 @@ export default function GameScreen() {
   const handleRematch = () => {
     void (async () => {
       const res = await gameFunctions.startRematch(gameId);
-      if (res.ok) router.replace(Routes.game(res.data.gameId));
+      // `pending` means the offer is recorded but someone hasn't agreed yet, so
+      // there is no game to go to. The effect below navigates if they do.
+      if (res.ok && res.data.gameId) router.replace(Routes.game(res.data.gameId));
     })();
   };
 
@@ -178,10 +194,14 @@ export default function GameScreen() {
           game={game}
           myPlayerId={myPlayerId}
           onExit={() => router.replace(Routes.home)}
-          // If someone already started the rematch, everyone still watching this
-          // node sees `rematchGameId` appear and joins it — no invite channel
-          // needed, because they're all subscribed here already.
-          rematchGameId={game.rematchGameId ?? null}
+          // A rematch needs everyone to agree, so the button reflects who has:
+          // once we've asked, we're waiting on the others; once they've asked,
+          // we're the one being waited on.
+          iOfferedRematch={iOfferedRematch}
+          othersOfferedRematch={
+            !!uid &&
+            Object.keys(game.rematchOffers ?? {}).some((offeredBy) => offeredBy !== uid)
+          }
           onRematch={handleRematch}
         />
       ) : null}

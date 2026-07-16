@@ -154,16 +154,61 @@ module.exports = {
       t.check('it is out of every index', (await db.ref('finishedGames/ttl').get()).val() === null);
     }
 
-    t.section('rematch: same players, new game, announced on the old one');
+    t.section('rematch: nobody is dragged into a game they did not agree to');
+    {
+      // The bug this guards: the rematch used to start a live game on the *first*
+      // request. The player who declined — who tapped "Back to Home" — was
+      // silently a member of a new game with a running clock. They never saw it,
+      // missed three turns, and were eliminated: a real, recorded defeat in a
+      // match they never agreed to play.
+      const users = [await signUp(), await signUp()];
+      await seedGame('rmq', users);
+      await callFn('forfeitGame', { gameId: 'rmq' }, users[0]);
+
+      const offer = await callFn('createGame', { source: 'rematch', fromGameId: 'rmq' }, users[0]);
+      t.check('one player may offer a rematch', offer.status === 200, JSON.stringify(offer.error));
+      t.check('but it starts NO game on its own', offer.result?.gameId == null, JSON.stringify(offer.result));
+      t.check('and it says so, rather than failing', offer.result?.pending === true);
+
+      const old = await getGame('rmq');
+      t.check('the offer is recorded', !!old.rematchOffers?.[users[0].uid]);
+      t.check('no rematch game is announced yet', old.rematchGameId == null);
+
+      // The decliner simply never asks. Nothing may exist that can time them out:
+      // no game they're a member of beyond the one they actually played, and
+      // nothing of theirs sitting on a turn clock.
+      const decliner = users[1].uid;
+      const allMembers = (await db.ref('gameMembers').get()).val() ?? {};
+      const theirGames = Object.entries(allMembers)
+        .filter(([, members]) => members?.[decliner])
+        .map(([id]) => id);
+      t.check(
+        'the decliner is in NO game but the one they actually played',
+        theirGames.join() === 'rmq',
+        theirGames.join(),
+      );
+
+      const due = (await db.ref('activeGames').get()).val() ?? {};
+      t.check(
+        'and nothing of theirs is on a turn clock waiting to eliminate them',
+        !theirGames.some((id) => due[id] !== undefined),
+        Object.keys(due).join(),
+      );
+    }
+
+    t.section('rematch: once everyone agrees, the game starts');
     {
       const users = [await signUp(), await signUp()];
       await seedGame('rm', users);
       await callFn('forfeitGame', { gameId: 'rm' }, users[0]);
 
-      const res = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[1]);
-      t.check('a player can start a rematch', res.status === 200, JSON.stringify(res.error));
+      const first = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[1]);
+      t.check('the first request only offers', first.result?.pending === true);
 
-      const newId = res.result.gameId;
+      const second = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[0]);
+      t.check('the last player to agree gets the new game', !!second.result?.gameId, JSON.stringify(second.result));
+
+      const newId = second.result.gameId;
       const fresh = await getGame(newId);
       t.check('the new game is live', fresh.phase === 'playing');
       t.check('same players', Object.values(fresh.players).map((p) => p.uid).sort().join() === users.map((u) => u.uid).sort().join());
@@ -175,9 +220,9 @@ module.exports = {
       );
 
       const old = await getGame('rm');
-      t.check('the OLD game announces it, so the opponent just sees it', old.rematchGameId === newId);
+      t.check('the OLD game announces it, so the offerer just sees it', old.rematchGameId === newId);
 
-      const again = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[0]);
+      const again = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, users[1]);
       t.check('the other player joins the same rematch, not a second one', again.result?.gameId === newId);
 
       const stranger = await signUp();

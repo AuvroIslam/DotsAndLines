@@ -153,11 +153,22 @@ export interface GameState {
   updatedAt: number;
   result: GameResult | null;
   /**
-   * Set by the server when someone starts a rematch of this (finished) game.
-   * The other players are already subscribed to this node, so this is how they
-   * hear about it — no separate invite channel needed.
+   * Set by the server once *every* player has asked for a rematch of this
+   * (finished) game. The other players are already subscribed to this node, so
+   * this is how they hear about it — no separate invite channel needed.
    */
   rematchGameId?: string;
+  /**
+   * Who has asked for a rematch of this game, keyed by uid. A rematch is an
+   * offer, not a command: the new game is only created once everyone has opted
+   * in.
+   *
+   * This exists because starting the game on the *first* request meant a player
+   * who declined — who tapped "Back to Home" — was silently entered into a live
+   * game with a running clock, missed three turns and was defeated. Nobody
+   * should lose a match they never agreed to play.
+   */
+  rematchOffers?: Record<string, number>;
   /**
    * Set once the server has written match history and statistics for this game,
    * so a retried invocation cannot double-count a player's wins or streak.

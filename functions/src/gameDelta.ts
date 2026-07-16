@@ -47,6 +47,9 @@ export function diffGamePaths(
   if (next.rematchGameId !== prev.rematchGameId) {
     updates[`${root}/rematchGameId`] = next.rematchGameId ?? null;
   }
+  if (next.rematchOffers !== prev.rematchOffers) {
+    updates[`${root}/rematchOffers`] = next.rematchOffers ?? null;
+  }
 
   // Lines and boxes are only ever *added* (a drawn line is never undrawn), so a
   // key-by-key add is sufficient and no deletions are possible.

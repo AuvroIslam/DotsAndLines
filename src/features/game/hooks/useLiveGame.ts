@@ -26,9 +26,9 @@ export function useLiveGame(gameId: string): LiveGame {
   const uid = useAuthStore((s) => s.user?.uid ?? null);
   const connect = useGameStore((s) => s.connect);
   const disconnect = useGameStore((s) => s.disconnect);
-  const game = useGameStore((s) => s.game);
+  const storeGame = useGameStore((s) => s.game);
   const presence = useGameStore((s) => s.presence);
-  const myPlayerId = useGameStore((s) => s.myPlayerId);
+  const storeMyPlayerId = useGameStore((s) => s.myPlayerId);
   const connection = useGameStore((s) => s.connection);
   const pendingLines = useGameStore((s) => s.pendingLines);
   const makeMove = useGameStore((s) => s.makeMove);
@@ -37,8 +37,21 @@ export function useLiveGame(gameId: string): LiveGame {
   useEffect(() => {
     if (!uid) return;
     connect(gameId, uid);
-    return () => disconnect();
+    // Scoped to this game id: if this screen is torn down after the next game has
+    // already connected, that teardown must not disconnect the new subscription.
+    return () => disconnect(gameId);
   }, [gameId, uid, connect, disconnect]);
+
+  // `connect` runs in an effect, so for one render after navigating between two
+  // games the route's `gameId` is already the new one while the store still holds
+  // the *previous* game. Handing that mismatch out is not merely a cosmetic flash:
+  // a rematch rotates the turn order, so the stale `myPlayerId` is very often a
+  // slot that now belongs to the opponent — and the presence write for it is
+  // rejected by the security rules (an uncaught PERMISSION_DENIED). Report
+  // nothing until the store is actually on the game we were asked for.
+  const isCurrent = storeGame?.id === gameId;
+  const game = isCurrent ? storeGame : null;
+  const myPlayerId = isCurrent ? storeMyPlayerId : null;
 
   const currentPlayer = game ? (game.players[game.currentTurn] ?? null) : null;
   const isMyTurn =

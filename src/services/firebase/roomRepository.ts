@@ -150,6 +150,9 @@ export const roomRepository = {
   async startGame(roomId: string): Promise<string> {
     const res = await gameFunctions.startFromRoom(roomId);
     if (!res.ok) throw new Error(`Could not start game: ${res.code}`);
+    // Only a rematch is ever answered without an id (it waits for the other
+    // players to agree); starting a room always creates the game outright.
+    if (!res.data.gameId) throw new Error('Could not start game: no game was created');
     return res.data.gameId;
   },
 };

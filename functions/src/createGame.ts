@@ -21,7 +21,9 @@ import type { GameState, MatchmakingTicket, Player, PlayerIndex, Room } from '@/
  */
 
 export type CreateOutcome =
-  | { ok: true; gameId: string }
+  | { ok: true; gameId: string; pending?: false }
+  /** The request was accepted, but the game does not exist yet — see `createRematch`. */
+  | { ok: true; gameId: null; pending: true }
   | { ok: false; reason: 'not_found' | 'not_allowed' | 'already_started' | 'not_enough_players' };
 
 /** A queue ticket, plus the claim/assignment stamps the pairing flow adds. */
@@ -138,12 +140,18 @@ export async function createGameFromMatch(
 }
 
 /**
- * Rematch: same players, new game.
+ * Rematch: same players, new game — but only once *everyone* has agreed.
  *
- * The opponent is already subscribed to the finished game, so rather than invent
- * a new channel we stamp `rematchGameId` onto it — their client simply sees it
- * appear and offers to join. Whoever moved first last time does not move first
- * again.
+ * A rematch is an offer, not a command. This used to create the live game on the
+ * first request, which meant the player who *declined* — who tapped "Back to
+ * Home" — was nonetheless a member of a new game whose clock was already running.
+ * They never saw it, missed three turns, and were eliminated: a real, recorded
+ * defeat in a match they never agreed to play. So each request records an offer,
+ * and the game is only built when no player is still missing.
+ *
+ * The players are all still subscribed to the finished game, so it doubles as the
+ * channel: offers land on it, and `rematchGameId` appears on it when the last
+ * player opts in. Whoever moved first last time does not move first again.
  */
 export async function createRematch(
   db: Database,
@@ -158,9 +166,19 @@ export async function createRematch(
   }
   if (prev.rematchGameId) return { ok: true, gameId: prev.rematchGameId }; // idempotent: join the existing one
 
+  // Record this player's offer. Doing it as its own write keeps the common case
+  // (first player to ask) to a single small update.
+  const offers: Record<string, number> = { ...(prev.rematchOffers ?? {}), [uid]: Date.now() };
+  const roster = prev.turnOrder.map((id) => prev.players[id]!);
+
+  if (roster.some((p) => offers[p.uid] === undefined)) {
+    // Somebody has not agreed yet — record the offer and start nothing.
+    await db.ref(`games/${fromGameId}/rematchOffers/${uid}`).set(offers[uid]!);
+    return { ok: true, gameId: null, pending: true };
+  }
+
   // Rotate the running order so the same player doesn't always open.
-  const previous = prev.turnOrder.map((id) => prev.players[id]!);
-  const rotated = [...previous.slice(1), previous[0]!];
+  const rotated = [...roster.slice(1), roster[0]!];
 
   const gameId = `rm_${fromGameId}_${Date.now()}`;
   const game = GameManager.create({
@@ -171,6 +189,7 @@ export async function createRematch(
   });
 
   await commitNewGame(db, game, {
+    [`games/${fromGameId}/rematchOffers/${uid}`]: offers[uid]!,
     [`games/${fromGameId}/rematchGameId`]: gameId,
   });
   return { ok: true, gameId };

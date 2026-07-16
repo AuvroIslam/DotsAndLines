@@ -17,14 +17,29 @@ export function trackRefConnection(
 ): () => void {
   const connectedRef = ref(realtimeDb, '.info/connected');
 
-  const unsub = onValue(connectedRef, async (snap) => {
+  const unsub = onValue(connectedRef, (snap) => {
     if (snap.val() === false) return;
-    await onDisconnect(targetRef).update(offlinePayload);
-    await update(targetRef, onlinePayload);
+    void (async () => {
+      await onDisconnect(targetRef).update(offlinePayload);
+      await update(targetRef, onlinePayload);
+    })().catch(swallow);
   });
 
   return () => {
     unsub();
-    void update(targetRef, offlinePayload);
+    void update(targetRef, offlinePayload).catch(swallow);
   };
 }
+
+/**
+ * Presence is cosmetic — it drives an "opponent is away" hint, and the server
+ * resolves an absent player by their missed turns regardless. So a failed write
+ * must never surface as an error: these are fire-and-forget, and an unhandled
+ * rejection here put a full-screen `PERMISSION_DENIED` over a working game.
+ *
+ * A rejection is expected in ordinary play: the rules only allow a player to
+ * write their own slot in a game that still exists, so a write that races a
+ * finished game's cleanup — or one left in flight while navigating away — is
+ * denied, correctly.
+ */
+function swallow(): void {}

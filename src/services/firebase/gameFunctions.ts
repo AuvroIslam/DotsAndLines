@@ -21,7 +21,13 @@ interface ActionResult {
   reason?: string;
 }
 interface CreatedGame {
-  gameId: string;
+  /** Null when `pending` — the game does not exist yet. */
+  gameId: string | null;
+  /**
+   * True when a rematch has been *offered* but not everyone has agreed, so no
+   * game has been created. Waiting is the correct response, not navigating.
+   */
+  pending?: boolean;
 }
 
 const playMoveFn = callable<{ gameId: string; line: Line }, ActionResult>('playMove');
@@ -72,6 +78,11 @@ export const gameFunctions = {
   async startFromMatch(opponentUid: string): Promise<CallResult<CreatedGame>> {
     return createGameFn({ source: 'match', opponentUid });
   },
+  /**
+   * Offer a rematch of a finished game. The new game is only created once every
+   * player has asked, so this resolves with `pending: true` (and no id) until the
+   * last one does — a player who declines is never dragged into a live game.
+   */
   async startRematch(fromGameId: string): Promise<CallResult<CreatedGame>> {
     return createGameFn({ source: 'rematch', fromGameId });
   },

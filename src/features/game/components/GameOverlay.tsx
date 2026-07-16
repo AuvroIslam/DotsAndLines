@@ -12,12 +12,10 @@ interface GameOverlayProps {
   myPlayerId: string | null;
   onExit: () => void;
   onRematch?: () => void;
-  /**
-   * Set once anyone has started the rematch. Everyone is still subscribed to the
-   * finished game, so they all see this appear — which turns "Rematch" into
-   * "Join rematch" for whoever didn't press it first.
-   */
-  rematchGameId?: string | null;
+  /** This player has asked for a rematch and is waiting on the others. */
+  iOfferedRematch?: boolean;
+  /** Someone else has asked for a rematch and is waiting on this player. */
+  othersOfferedRematch?: boolean;
 }
 
 /** Winner / draw screen shown when the game finishes. */
@@ -26,7 +24,8 @@ export function GameOverlay({
   myPlayerId,
   onExit,
   onRematch,
-  rematchGameId,
+  iOfferedRematch,
+  othersOfferedRematch,
 }: GameOverlayProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -96,7 +95,16 @@ export function GameOverlay({
         </View>
 
         {onRematch ? (
-          <Button label={rematchGameId ? 'Join Rematch' : 'Rematch'} onPress={onRematch} />
+          iOfferedRematch ? (
+            // We've asked; nothing starts until they do. Say so plainly rather
+            // than leave a button that looks like it didn't work.
+            <Button label="Waiting for opponent…" disabled onPress={onRematch} />
+          ) : (
+            <Button
+              label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}
+              onPress={onRematch}
+            />
+          )
         ) : null}
         <Button label="Back to Home" variant="secondary" onPress={onExit} />
       </View>

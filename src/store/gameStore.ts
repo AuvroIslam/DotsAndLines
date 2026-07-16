@@ -20,7 +20,11 @@ interface GameStoreState {
   error: string | null;
 
   connect: (gameId: string, uid: string) => void;
-  disconnect: () => void;
+  /**
+   * Tear down the subscription. Pass the game id being left, so a screen
+   * unmounting *after* the next one has already connected doesn't disconnect it.
+   */
+  disconnect: (forGameId?: string) => void;
   makeMove: (line: Line) => Promise<void>;
   /** Resolves true if the server accepted the forfeit. Never throws. */
   forfeit: () => Promise<boolean>;
@@ -124,7 +128,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
   },
 
-  disconnect: () => {
+  disconnect: (forGameId) => {
+    // Navigating from one game straight into another (a rematch) can unmount the
+    // old screen after the new one has already subscribed. Without this guard
+    // that late teardown tears down the *new* game's subscription, leaving it on
+    // "Joining game…" forever.
+    if (forGameId && get().gameId !== forGameId) return;
+
     unsubscribe?.();
     unsubscribePresence?.();
     unsubscribe = null;

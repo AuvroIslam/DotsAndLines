@@ -97,8 +97,15 @@ export const createGame = onCall<{
     throw new HttpsError('failed-precondition', res.reason);
   }
 
+  // A rematch that nobody else has agreed to yet is accepted but starts nothing:
+  // the offer is recorded and the game is built only when the last player opts in.
+  if (res.pending) {
+    logger.info('rematch offered', { fromGameId, uid });
+    return { gameId: null, pending: true };
+  }
+
   logger.info('game created', { gameId: res.gameId, source, uid });
-  return { gameId: res.gameId };
+  return { gameId: res.gameId, pending: false };
 });
 
 /**
