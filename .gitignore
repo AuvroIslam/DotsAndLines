@@ -26,6 +26,14 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+# firebase-debug.log can contain the CLI's OAuth access tokens, so it must never
+# be committable — the emulator and deploy both drop these wherever they're run.
+*.log
+firebase-debug.*.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+pubsub-debug.log
 
 # macOS
 .DS_Store

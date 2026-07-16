@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { GameManager, WinChecker } from '@/gameEngine';
+import { GameManager } from '@/gameEngine';
 import { gameFunctions, gameRepository } from '@/services/firebase';
 import type { GamePresence, GameState, Line, Player, PlayerId } from '@/types';
 import { lineToKey } from '@/utils';

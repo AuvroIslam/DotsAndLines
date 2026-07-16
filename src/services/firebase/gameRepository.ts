@@ -2,8 +2,8 @@ import { get, onValue, ref, serverTimestamp, update } from 'firebase/database';
 
 import type { GamePresence, GameState, PlayerId } from '@/types';
 
-import { trackRefConnection } from './connectionTracking';
 import { realtimeDb } from './config';
+import { trackRefConnection } from './connectionTracking';
 import { RtdbPaths } from './paths';
 import { normalizeGame, normalizePresence } from './rtdbSerialize';
 

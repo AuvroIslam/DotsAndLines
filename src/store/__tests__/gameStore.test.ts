@@ -1,3 +1,4 @@
+import { useGameStore } from '@/store/gameStore';
 import type { GameState } from '@/types';
 
 type SubscribeCb = (game: GameState | null) => void;
@@ -21,9 +22,6 @@ jest.mock('@/services/firebase', () => ({
     accepted: jest.fn(),
   },
 }));
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { useGameStore } = require('@/store/gameStore');
 
 function baseGame(overrides: Partial<GameState>): GameState {
   return {
@@ -77,7 +75,7 @@ describe('gameStore reconciliation', () => {
 
   it('never applies a torn intermediate snapshot from one server write', () => {
     const seenGames: (GameState | null)[] = [];
-    const unsub = useGameStore.subscribe((s: { game: GameState | null }) => seenGames.push(s.game));
+    const unsub = useGameStore.subscribe((s) => seenGames.push(s.game));
 
     useGameStore.getState().connect('g1', 'uid1');
     expect(subscribeCb).not.toBeNull();

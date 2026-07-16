@@ -18,6 +18,9 @@ interface GameOverlayProps {
   othersOfferedRematch?: boolean;
 }
 
+/** `Button` requires an `onPress`; a disabled one has nothing to do. */
+const noop = () => {};
+
 /** Winner / draw screen shown when the game finishes. */
 export function GameOverlay({
   game,
@@ -98,7 +101,7 @@ export function GameOverlay({
           iOfferedRematch ? (
             // We've asked; nothing starts until they do. Say so plainly rather
             // than leave a button that looks like it didn't work.
-            <Button label="Waiting for opponent…" disabled onPress={onRematch} />
+            <Button label="Waiting for opponent…" disabled onPress={noop} />
           ) : (
             <Button
               label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}

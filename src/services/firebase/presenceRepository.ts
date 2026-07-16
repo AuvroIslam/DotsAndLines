@@ -1,7 +1,7 @@
 import { onValue, ref, serverTimestamp } from 'firebase/database';
 
-import { trackRefConnection } from './connectionTracking';
 import { realtimeDb } from './config';
+import { trackRefConnection } from './connectionTracking';
 import { RtdbPaths } from './paths';
 
 export interface PresenceState {
