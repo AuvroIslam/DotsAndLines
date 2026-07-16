@@ -29,6 +29,37 @@ interface GameStoreState {
 
 let unsubscribe: (() => void) | null = null;
 let unsubscribePresence: (() => void) | null = null;
+let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * A Cloud Function's multi-path `update()` commits atomically on the server,
+ * but the client's `onValue` listener is not guaranteed to observe it as one
+ * event: a move has been measured to arrive as a *torn* read (e.g. `version`
+ * already bumped, `board`/`currentTurn` still the old values), followed by
+ * the fully-consistent snapshot ~30ms later. Applying every fire verbatim
+ * flashes the just-drawn line back to blank and then redraws it — the same
+ * move rendered twice. A short quiet window collapses a burst of fires from
+ * one write into a single, self-consistent update.
+ */
+const RECONCILE_DEBOUNCE_MS = 80;
+
+/**
+ * Belt-and-braces on top of the debounce above: lines and boxes are only ever
+ * *added* during a game (see `gameDelta.ts`), so a snapshot can never
+ * legitimately un-draw one. Union rather than replace, so a torn read that
+ * slips past the debounce still can't make the board regress.
+ */
+function mergeIncoming(current: GameState | null, incoming: GameState | null): GameState | null {
+  if (!incoming || !current || current.id !== incoming.id) return incoming;
+  return {
+    ...incoming,
+    board: {
+      ...incoming.board,
+      lines: { ...current.board.lines, ...incoming.board.lines },
+      boxes: { ...current.board.boxes, ...incoming.board.boxes },
+    },
+  };
+}
 
 function resolveMyPlayerId(game: GameState | null, uid: string | null): PlayerId | null {
   if (!game || !uid) return null;
@@ -57,6 +88,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (get().gameId === gameId && unsubscribe) return;
     unsubscribe?.();
     unsubscribePresence?.();
+    if (reconcileTimer) clearTimeout(reconcileTimer);
+    reconcileTimer = null;
     set({
       gameId,
       myUid: uid,
@@ -68,14 +101,20 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       error: null,
     });
 
-    unsubscribe = gameRepository.subscribe(gameId, (game) => {
-      set((s) => ({
-        game,
-        myPlayerId: resolveMyPlayerId(game, s.myUid),
-        connection: 'online',
-        // Server snapshot is authoritative: clear any optimistic lines it now reflects.
-        pendingLines: new Set(),
-      }));
+    unsubscribe = gameRepository.subscribe(gameId, (incoming) => {
+      // Coalesce a burst of fires from one server write (see RECONCILE_DEBOUNCE_MS
+      // above) so a torn intermediate read never reaches the UI.
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      reconcileTimer = setTimeout(() => {
+        reconcileTimer = null;
+        set((s) => ({
+          game: mergeIncoming(s.game, incoming),
+          myPlayerId: resolveMyPlayerId(incoming, s.myUid),
+          connection: 'online',
+          // Server snapshot is authoritative: clear any optimistic lines it now reflects.
+          pendingLines: new Set(),
+        }));
+      }, RECONCILE_DEBOUNCE_MS);
     });
 
     // Presence streams on its own node so the heartbeat traffic never touches
@@ -90,6 +129,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     unsubscribePresence?.();
     unsubscribe = null;
     unsubscribePresence = null;
+    if (reconcileTimer) clearTimeout(reconcileTimer);
+    reconcileTimer = null;
     set({
       gameId: null,
       game: null,
