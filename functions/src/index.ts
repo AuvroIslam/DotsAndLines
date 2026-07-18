@@ -15,7 +15,12 @@ import {
   timeoutExpiredTurnsByMember,
   type ActionOutcome,
 } from './authority';
-import { createGameFromMatch, createGameFromRoom, createRematch } from './createGame';
+import {
+  createGameFromMatch,
+  createGameFromRoom,
+  createRematch,
+  withdrawRematch,
+} from './createGame';
 
 // Callables must resolve from the region the client asks for (see `getFunctions`
 // in services/firebase/config). There are deliberately no RTDB triggers: a
@@ -106,6 +111,17 @@ export const createGame = onCall<{
 
   logger.info('game created', { gameId: res.gameId, source, uid });
   return { gameId: res.gameId, pending: false };
+});
+
+/**
+ * Retract a rematch offer, made when a player leaves the game-over screen.
+ * Leaving is declining: without this, an offer lingers and an opponent accepting
+ * a moment later would pull the departed player into a game they walked away from.
+ */
+export const cancelRematch = onCall<{ gameId?: string }>(async (request) => {
+  const [uid, gameId] = requireCaller(request.auth, request.data?.gameId);
+  await withdrawRematch(db(), uid, gameId);
+  return { ok: true };
 });
 
 /**

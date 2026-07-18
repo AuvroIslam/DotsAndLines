@@ -37,6 +37,7 @@ const createGameFn = callable<
   { source: 'room' | 'match' | 'rematch'; roomId?: string; opponentUid?: string; fromGameId?: string },
   CreatedGame
 >('createGame');
+const cancelRematchFn = callable<{ gameId: string }, ActionResult>('cancelRematch');
 
 /** Did the server accept the request, and if not, why? */
 const accepted = (res: CallResult<ActionResult>) => res.ok && res.data.ok === true;
@@ -85,6 +86,15 @@ export const gameFunctions = {
    */
   async startRematch(fromGameId: string): Promise<CallResult<CreatedGame>> {
     return createGameFn({ source: 'rematch', fromGameId });
+  },
+
+  /**
+   * Retract a rematch offer. Fired when leaving the game-over screen so a
+   * departed player can't be pulled into a rematch they walked away from.
+   * Fire-and-forget: if it fails, the offer's freshness window expires it anyway.
+   */
+  async cancelRematch(fromGameId: string): Promise<CallResult<ActionResult>> {
+    return cancelRematchFn({ gameId: fromGameId });
   },
 
   accepted,

@@ -197,6 +197,53 @@ module.exports = {
       );
     }
 
+    t.section('rematch: leaving retracts the offer, so a late accept starts nothing');
+    {
+      // The report this guards: P1 offers a rematch, then taps "Back to Home".
+      // P2 accepts a moment later. Without retraction P1 — who left — is pulled
+      // into a live game, misses three turns and is defeated in a match they
+      // walked away from. Leaving must withdraw the offer.
+      const users = [await signUp(), await signUp()];
+      await seedGame('rmw', users);
+      await callFn('forfeitGame', { gameId: 'rmw' }, users[0]);
+
+      await createGame.createRematch(db, users[0].uid, 'rmw'); // P1 offers
+      await createGame.withdrawRematch(db, users[0].uid, 'rmw'); // …then leaves
+      t.check("the departed player's offer is gone", !(await getGame('rmw')).rematchOffers?.[users[0].uid]);
+
+      const late = await createGame.createRematch(db, users[1].uid, 'rmw'); // P2 accepts late
+      t.check('the late acceptance starts no game', late.gameId == null && late.pending === true, JSON.stringify(late));
+      t.check('nothing was stamped on the finished game', (await getGame('rmw')).rematchGameId == null);
+
+      const spawned = Object.keys((await db.ref('games').get()).val() ?? {}).filter((id) => id.startsWith('rm_rmw'));
+      t.check('the player who left is in NO new game', spawned.length === 0, spawned.join());
+    }
+
+    t.section('rematch: a stale offer no longer counts');
+    {
+      // Backstop for the app that dies before it can retract: an offer older than
+      // its freshness window must not let an opponent drag the long-gone player in.
+      const users = [await signUp(), await signUp()];
+      await seedGame('rmstale', users);
+      await callFn('forfeitGame', { gameId: 'rmstale' }, users[0]);
+
+      await createGame.createRematch(db, users[0].uid, 'rmstale'); // P1 offers…
+      // …and their app dies. Backdate the offer past the TTL to simulate the wait.
+      await db
+        .ref(`games/rmstale/rematchOffers/${users[0].uid}`)
+        .set(Date.now() - createGame.REMATCH_OFFER_TTL_MS - 1_000);
+
+      const accept = await createGame.createRematch(db, users[1].uid, 'rmstale');
+      t.check('a stale offer does not complete the rematch', accept.gameId == null && accept.pending === true, JSON.stringify(accept));
+      t.check('no game was stamped', (await getGame('rmstale')).rematchGameId == null);
+
+      // And a player can renew: tapping again restamps a fresh time, so a genuine
+      // second attempt still works.
+      await createGame.createRematch(db, users[0].uid, 'rmstale'); // P1 re-offers, fresh
+      const now = await createGame.createRematch(db, users[1].uid, 'rmstale'); // P2 accepts
+      t.check('renewing a lapsed offer lets the rematch complete', !!now.gameId, JSON.stringify(now));
+    }
+
     t.section('rematch: two players agreeing at the SAME INSTANT still get a game');
     {
       // The bug this guards: recording the offer used to be a read-then-write.

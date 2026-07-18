@@ -146,6 +146,15 @@ export default function GameScreen() {
     })();
   };
 
+  // Leaving the game-over screen retracts any rematch offer first, so an opponent
+  // accepting a moment later can't pull us into a game we just walked away from.
+  // Fire-and-forget: navigation shouldn't wait on it, and the offer's freshness
+  // window expires it anyway if the request never lands.
+  const handleExitFinished = () => {
+    if (iOfferedRematch) void gameFunctions.cancelRematch(gameId);
+    router.replace(Routes.home);
+  };
+
   const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
   const turnLabel =
     game.phase === 'finished'
@@ -193,7 +202,7 @@ export default function GameScreen() {
         <GameOverlay
           game={game}
           myPlayerId={myPlayerId}
-          onExit={() => router.replace(Routes.home)}
+          onExit={handleExitFinished}
           // A rematch needs everyone to agree, so the button reflects who has:
           // once we've asked, we're waiting on the others; once they've asked,
           // we're the one being waited on.

@@ -30,6 +30,17 @@ export type CreateOutcome =
 type QueuedTicket = MatchmakingTicket & { gameId?: string; claimedBy?: string };
 
 /**
+ * How long a rematch offer stays valid. An offer is a statement of *current*
+ * intent, not a standing order: without a bound, a player who tapped Rematch and
+ * then their app died would still be dragged into a game hours later the moment
+ * an opponent accepted. Explicit leaving retracts the offer at once (see
+ * `withdrawRematch`); this is the backstop for the ungraceful exit that can't.
+ * Generous, because two players actually looking at the game-over screen agree
+ * within seconds — this only rules out the long-abandoned offer.
+ */
+export const REMATCH_OFFER_TTL_MS = 3 * 60 * 1000;
+
+/**
  * Write a new game, its membership index and its turn-deadline index in a single
  * atomic multi-path update.
  *
@@ -156,11 +167,13 @@ async function recordOffer(ref: Reference, uid: string): Promise<Record<string, 
   const listener = ref.on('value', () => {});
   try {
     await ref.once('value');
-    const res = await ref.transaction((current: Record<string, number> | null) => {
-      const offers = current ?? {};
-      if (offers[uid] !== undefined) return undefined; // already recorded — don't churn it
-      return { ...offers, [uid]: Date.now() };
-    });
+    // Always (re)stamp with the current time rather than skipping an existing
+    // entry: an offer has a freshness window, so a player whose previous offer
+    // lapsed must be able to renew it by tapping again.
+    const res = await ref.transaction((current: Record<string, number> | null) => ({
+      ...(current ?? {}),
+      [uid]: Date.now(),
+    }));
     // Committed or aborted, the snapshot carries the authoritative set — and that
     // is what the caller needs to decide whether everyone has agreed.
     return (res.snapshot.val() as Record<string, number> | null) ?? {};
@@ -199,8 +212,17 @@ export async function createRematch(
   const offers = await recordOffer(db.ref(`games/${fromGameId}/rematchOffers`), uid);
   const roster = prev.turnOrder.map((id) => prev.players[id]!);
 
-  if (roster.some((p) => offers[p.uid] === undefined)) {
-    // Somebody has not agreed yet. The offer is recorded; start nothing.
+  // Everyone must have a *fresh* offer. A stale one — from a player who tapped
+  // Rematch long ago and wandered off — does not count, so accepting now cannot
+  // drag them into a game they've forgotten about.
+  const now = Date.now();
+  const hasFreshOffer = (playerUid: string) => {
+    const at = offers[playerUid];
+    return at !== undefined && now - at < REMATCH_OFFER_TTL_MS;
+  };
+  if (roster.some((p) => !hasFreshOffer(p.uid))) {
+    // Somebody has not agreed yet (or their agreement has lapsed). The offer is
+    // recorded; start nothing.
     return { ok: true, gameId: null, pending: true };
   }
 
@@ -230,4 +252,25 @@ export async function createRematch(
     [`games/${fromGameId}/rematchGameId`]: gameId,
   });
   return { ok: true, gameId };
+}
+
+/**
+ * Retract a rematch offer.
+ *
+ * Fired when a player leaves the game-over screen: leaving *is* declining, and
+ * their offer must go at once so an opponent who accepts a moment later cannot
+ * pull them into a game they just walked away from. The freshness TTL bounds the
+ * same risk for an app that dies without a chance to call this; here we clear it
+ * immediately.
+ *
+ * It removes only this player's own key (`rematchOffers/{uid}`, and uid comes
+ * from the caller's token), so it cannot disturb anyone else's offer and needs
+ * no transaction on the parent. Removing an absent offer is a harmless no-op.
+ */
+export async function withdrawRematch(
+  db: Database,
+  uid: string,
+  fromGameId: string,
+): Promise<void> {
+  await db.ref(`games/${fromGameId}/rematchOffers/${uid}`).remove();
 }
