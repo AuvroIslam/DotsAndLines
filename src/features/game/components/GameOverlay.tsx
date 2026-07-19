@@ -16,10 +16,9 @@ interface GameOverlayProps {
   iOfferedRematch?: boolean;
   /** Someone else has asked for a rematch and is waiting on this player. */
   othersOfferedRematch?: boolean;
+  /** Retract a standing rematch offer, so a waiting player is never trapped. */
+  onCancelRematch?: () => void;
 }
-
-/** `Button` requires an `onPress`; a disabled one has nothing to do. */
-const noop = () => {};
 
 /** Winner / draw screen shown when the game finishes. */
 export function GameOverlay({
@@ -29,6 +28,7 @@ export function GameOverlay({
   onRematch,
   iOfferedRematch,
   othersOfferedRematch,
+  onCancelRematch,
 }: GameOverlayProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -99,9 +99,10 @@ export function GameOverlay({
 
         {onRematch ? (
           iOfferedRematch ? (
-            // We've asked; nothing starts until they do. Say so plainly rather
-            // than leave a button that looks like it didn't work.
-            <Button label="Waiting for opponent…" disabled onPress={noop} />
+            // We've asked; nothing starts until they do. Keep the button live as
+            // a way *out* of the wait — a disabled "Waiting…" trapped a player
+            // whose opponent had simply left, with no way to take the offer back.
+            <Button label="Waiting for opponent — tap to cancel" onPress={onCancelRematch ?? onExit} />
           ) : (
             <Button
               label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}

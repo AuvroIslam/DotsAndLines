@@ -95,6 +95,26 @@ export default function GameScreen() {
     if (rematchGameId && iOfferedRematch) router.replace(Routes.game(rematchGameId));
   }, [rematchGameId, iOfferedRematch, router]);
 
+  // Retract a standing rematch offer whenever we leave the game, *however* we
+  // leave — the on-screen button, the header, a swipe, or the Android back key,
+  // which bypasses every on-press handler. Without this a player who offered and
+  // then backed out stayed on the roster, and an opponent accepting a moment
+  // later pulled them into a live game to lose by timeout. Keyed on a ref set the
+  // instant we tap (not the snapshot flag, which lags), and skipped once the
+  // rematch has actually started so navigating *into* the new game doesn't cancel
+  // the offer that created it.
+  const requestedRematch = useRef(false);
+  const rematchStarted = useRef(false);
+  rematchStarted.current = !!rematchGameId;
+  useEffect(
+    () => () => {
+      if (requestedRematch.current && !rematchStarted.current) {
+        void gameFunctions.cancelRematch(gameId);
+      }
+    },
+    [gameId],
+  );
+
   // A game we've never seen is still loading; one that has *gone* was deleted
   // (finished games are cleaned up after a day) or never existed at all. Without
   // this the screen sat on "Joining game…" forever.
@@ -140,20 +160,25 @@ export default function GameScreen() {
   const handleRematch = () => {
     void (async () => {
       const res = await gameFunctions.startRematch(gameId);
-      // `pending` means the offer is recorded but someone hasn't agreed yet, so
-      // there is no game to go to. The effect below navigates if they do.
-      if (res.ok && res.data.gameId) router.replace(Routes.game(res.data.gameId));
+      if (res.ok && res.data.gameId) {
+        // Everyone agreed — go straight to the new game.
+        router.replace(Routes.game(res.data.gameId));
+      } else if (res.ok) {
+        // Offer recorded, waiting on the others. Remember that we asked so we can
+        // retract it on the way out (below) — tracked here rather than from the
+        // snapshot flag, which lags a round-trip behind the tap.
+        requestedRematch.current = true;
+      }
     })();
   };
 
-  // Leaving the game-over screen retracts any rematch offer first, so an opponent
-  // accepting a moment later can't pull us into a game we just walked away from.
-  // Fire-and-forget: navigation shouldn't wait on it, and the offer's freshness
-  // window expires it anyway if the request never lands.
-  const handleExitFinished = () => {
-    if (iOfferedRematch) void gameFunctions.cancelRematch(gameId);
-    router.replace(Routes.home);
+  // Retract a standing rematch offer, and stop tracking it, without leaving.
+  const handleCancelRematch = () => {
+    requestedRematch.current = false;
+    void gameFunctions.cancelRematch(gameId);
   };
+
+  const handleExitFinished = () => router.replace(Routes.home);
 
   const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
   const turnLabel =
@@ -212,6 +237,7 @@ export default function GameScreen() {
             Object.keys(game.rematchOffers ?? {}).some((offeredBy) => offeredBy !== uid)
           }
           onRematch={handleRematch}
+          onCancelRematch={handleCancelRematch}
         />
       ) : null}
     </SafeAreaView>
