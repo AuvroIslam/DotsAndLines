@@ -15,9 +15,15 @@ export function useProtectedRoute(status: AuthStatus): void {
     if (status === 'initializing') return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inAppGroup = segments[0] === '(app)';
+
+    // Gate on "not where you belong", not "in the other group". At the index
+    // route `/`, segments is empty — so an authenticated user there is in
+    // neither group, and keying the redirect on `inAuthGroup` left them stranded
+    // on the splash. A persisted session lands here on every cold start.
     if (status === 'unauthenticated' && !inAuthGroup) {
       router.replace('/(auth)/sign-in');
-    } else if (status === 'authenticated' && inAuthGroup) {
+    } else if (status === 'authenticated' && !inAppGroup) {
       router.replace('/(app)/home');
     }
   }, [status, segments, router]);
