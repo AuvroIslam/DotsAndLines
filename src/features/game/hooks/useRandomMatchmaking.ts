@@ -86,10 +86,31 @@ export function useRandomMatchmaking() {
 
   const cancel = useCallback(() => {
     log('CANCEL searching', { uid: profile?.uid });
-    teardown();
-    setSearching(false);
-    if (profile) void matchmakingRepository.dequeue(profile.uid);
-  }, [profile, teardown]);
+    // Stop polling at once so we can't make a *new* match while cancelling, but
+    // keep watching our ticket until the outcome is settled.
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+
+    if (!profile) {
+      teardown();
+      setSearching(false);
+      return;
+    }
+
+    void (async () => {
+      // Cancel only if unmatched. If pairing beat us to it, the game already
+      // exists with us in it — honor the match and go play it rather than strand
+      // ourselves out of a game the server thinks we're in.
+      const gameId = await matchmakingRepository.cancelSearch(profile.uid);
+      if (gameId) {
+        log('cancel raced a real match — joining it', { uid: profile.uid, gameId });
+        goToGame(gameId, profile.uid);
+      } else {
+        teardown();
+        setSearching(false);
+      }
+    })();
+  }, [profile, teardown, goToGame]);
 
   useEffect(
     () => () => {

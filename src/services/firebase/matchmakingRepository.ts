@@ -42,6 +42,41 @@ export const matchmakingRepository = {
     }
   },
 
+  /**
+   * Cancel a search — but only if a match hasn't already been made.
+   *
+   * A plain dequeue here strands the player: pairing runs on another client (or
+   * a poll tick) and creates the game the instant before Cancel, stamping this
+   * ticket with a `gameId`. Removing the ticket then throws that away, while the
+   * game exists on the server with the player in it — who never sees it, misses
+   * every turn and loses a match they were never shown.
+   *
+   * So decide it atomically. If a `gameId` has landed, the match is real: leave
+   * the ticket be and report the game so the caller can navigate *into* it — once
+   * paired, you play. Only if no game has been assigned do we remove the ticket
+   * and genuinely cancel. Returning a plain value (never `undefined`) lets RTDB
+   * re-run the update fn against fresh server data if its first pass saw a cold
+   * cache, so a `gameId` written mid-cancel is never missed.
+   */
+  async cancelSearch(uid: string): Promise<string | null> {
+    const ticketRef = ref(realtimeDb, RtdbPaths.queueTicket(uid));
+    let matchedGameId: string | null = null;
+    try {
+      await runTransaction(ticketRef, (t: QueuedTicket | null) => {
+        matchedGameId = null; // reset each pass; the committed pass is what counts
+        if (t === null) return null; // nothing queued (or cold cache — RTDB re-runs)
+        if (t.gameId) {
+          matchedGameId = t.gameId; // matched mid-cancel — keep the ticket, honor it
+          return t;
+        }
+        return null; // not matched — remove the ticket, cancel wins
+      });
+    } catch (e) {
+      log.error('cancelSearch failed', describe(e));
+    }
+    return matchedGameId;
+  },
+
   /** Watch my own ticket; once `gameId` appears, the match is ready. */
   subscribeTicket(uid: string, cb: (ticket: QueuedTicket | null) => void): () => void {
     log('subscribing to own ticket', { uid });
