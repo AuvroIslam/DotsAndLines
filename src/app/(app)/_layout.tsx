@@ -1,9 +1,14 @@
 import { Stack } from 'expo-router';
 
+import { useActiveGameWatcher } from '@/features/game';
 import { useThemeColors } from '@/theme/useTheme';
 
 export default function AppLayout() {
   const colors = useThemeColors();
+  // Watches the games this player is a member of, so a match made while they were
+  // elsewhere (a cancelled search, a backgrounded app, a cold start) always finds
+  // them. Mounted here — once, above every authenticated screen.
+  useActiveGameWatcher();
   return (
     <Stack
       screenOptions={{

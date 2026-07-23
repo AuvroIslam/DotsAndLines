@@ -84,33 +84,29 @@ export default function GameScreen() {
     }
   }, [game?.phase, game?.result, myPlayerId]);
 
-  // The last player to accept a rematch gets the new id straight back; everyone
-  // else learns of it when `rematchGameId` appears on the finished game they are
-  // all still subscribed to. Only follow it if we actually asked — otherwise a
-  // player who declined would be dragged into the game they just turned down,
-  // which is the whole bug the offer/accept flow exists to prevent.
+  // Once a rematch has actually been created, the active-game watcher (mounted in
+  // the app layout) routes everyone into it — the new game lands in their
+  // userActiveGames index atomically with its creation, so there's no separate
+  // navigation to wire here. All we do is stop the unmount cleanup below from
+  // retracting the offer that just made it (see `requestedRematch`).
   const rematchGameId = game?.rematchGameId ?? null;
   const iOfferedRematch = !!uid && !!game?.rematchOffers?.[uid];
+  const requestedRematch = useRef(false);
   useEffect(() => {
-    if (rematchGameId && iOfferedRematch) router.replace(Routes.game(rematchGameId));
-  }, [rematchGameId, iOfferedRematch, router]);
+    if (rematchGameId && iOfferedRematch) requestedRematch.current = false;
+  }, [rematchGameId, iOfferedRematch]);
 
   // Retract a standing rematch offer whenever we leave the game, *however* we
   // leave — the on-screen button, the header, a swipe, or the Android back key,
   // which bypasses every on-press handler. Without this a player who offered and
   // then backed out stayed on the roster, and an opponent accepting a moment
-  // later pulled them into a live game to lose by timeout. Keyed on a ref set the
-  // instant we tap (not the snapshot flag, which lags), and skipped once the
-  // rematch has actually started so navigating *into* the new game doesn't cancel
-  // the offer that created it.
-  const requestedRematch = useRef(false);
-  const rematchStarted = useRef(false);
-  rematchStarted.current = !!rematchGameId;
+  // later pulled them into a live game to lose by timeout. `requestedRematch` is
+  // set the instant we tap and cleared once the rematch is consummated (the
+  // effect above) or explicitly cancelled — so if it's still set at unmount, the
+  // offer is genuinely standing and should be pulled.
   useEffect(
     () => () => {
-      if (requestedRematch.current && !rematchStarted.current) {
-        void gameFunctions.cancelRematch(gameId);
-      }
+      if (requestedRematch.current) void gameFunctions.cancelRematch(gameId);
     },
     [gameId],
   );

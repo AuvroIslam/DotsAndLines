@@ -34,6 +34,21 @@ export const gameRepository = {
   },
 
   /**
+   * Watch the live games this player is a member of. The server writes an entry
+   * atomically with each game it creates and clears it when the game ends, so a
+   * client can never be told it's in a game that doesn't exist. Drives the
+   * active-game watcher, which routes a player into a match made while they were
+   * on another screen (a cancelled search, a backgrounded app, a cold start).
+   */
+  subscribeActiveGames(uid: string, cb: (gameIds: string[]) => void): () => void {
+    const node = ref(realtimeDb, RtdbPaths.userActiveGames(uid));
+    return onValue(node, (snap) => {
+      const val = (snap.val() as Record<string, boolean> | null) ?? {};
+      cb(Object.keys(val));
+    });
+  },
+
+  /**
    * Presence is watched separately from the game so the high-churn heartbeat
    * stream never invalidates the game subscription.
    */

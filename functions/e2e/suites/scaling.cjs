@@ -12,8 +12,12 @@ const {
   getGame,
   getDue,
   seedGame,
+  startGameFromRoom,
   TURN_MS,
 } = require('../lib/harness.cjs');
+
+const activeGamesOf = async (uid) =>
+  Object.keys((await db.ref(`userActiveGames/${uid}`).get()).val() ?? {}).sort();
 
 const { Board, GameManager } = engine;
 
@@ -322,6 +326,63 @@ module.exports = {
       const stranger = await signUp();
       const denied = await callFn('createGame', { source: 'rematch', fromGameId: 'rm' }, stranger);
       t.check('a stranger cannot rematch a game they never played', denied.status >= 400);
+    }
+
+    t.section('the active-game index tracks live membership for the watcher');
+    {
+      // The client's active-game watcher reads userActiveGames to route a player
+      // into a game made while they were elsewhere. The index must be written
+      // atomically with the game and cleared when it ends, so the watcher never
+      // points at a game that doesn't exist, nor misses one that does.
+      const [a, b] = [await signUp(), await signUp()];
+      const created = await startGameFromRoom('idx-live', [a, b]);
+      t.check('the server created the game', created.status === 200, JSON.stringify(created.error));
+
+      t.check('player A’s index lists the game', (await activeGamesOf(a.uid)).includes('idx-live'));
+      t.check('player B’s index lists the game', (await activeGamesOf(b.uid)).includes('idx-live'));
+
+      await callFn('forfeitGame', { gameId: 'idx-live' }, a);
+      t.check('the finished game is gone from A’s index', !(await activeGamesOf(a.uid)).includes('idx-live'));
+      t.check('the finished game is gone from B’s index', !(await activeGamesOf(b.uid)).includes('idx-live'));
+    }
+
+    t.section('a rematch also lands in the index, so both players get routed in');
+    {
+      const [a, b] = [await signUp(), await signUp()];
+      await seedGame('idx-rm', [a, b]);
+      await callFn('forfeitGame', { gameId: 'idx-rm' }, a);
+      // Both agree — the rematch is created.
+      await createGame.createRematch(db, a.uid, 'idx-rm');
+      const res = await createGame.createRematch(db, b.uid, 'idx-rm');
+      const newId = res.gameId;
+
+      t.check('the rematch was created', !!newId, JSON.stringify(res));
+      t.check('player A’s index now lists the rematch', (await activeGamesOf(a.uid)).includes(newId));
+      t.check('player B’s index now lists the rematch', (await activeGamesOf(b.uid)).includes(newId));
+      t.check('the finished game is not in the index', !(await activeGamesOf(a.uid)).includes('idx-rm'));
+    }
+
+    t.section('a dead rematch pointer self-heals instead of stranding both players');
+    {
+      // The claim (a transaction on the finished game) and the game creation (a
+      // write to a different node) are not one atomic step. Simulate the create
+      // failing after the stamp landed: rematchGameId points at a game that was
+      // never built. A retry must rebuild it, not send everyone to a dead game.
+      const [a, b] = [await signUp(), await signUp()];
+      await seedGame('idx-heal', [a, b]);
+      await callFn('forfeitGame', { gameId: 'idx-heal' }, a);
+
+      // Stamp the pointer but never create rm_idx-heal — the dangling state.
+      await db.ref('games/idx-heal/rematchGameId').set('rm_idx-heal');
+      t.check('the pointer is set but the game does not exist', (await getGame('rm_idx-heal')) === null);
+
+      const res = await createGame.createRematch(db, a.uid, 'idx-heal');
+      t.check('the retry returns the pointed-at game', res.gameId === 'rm_idx-heal', JSON.stringify(res));
+
+      const healed = await getGame('rm_idx-heal');
+      t.check('the missing game was rebuilt', healed !== null && healed.phase === 'playing');
+      t.check('with both players', healed && Object.keys(healed.players).length === 2);
+      t.check('and it landed in the index', (await activeGamesOf(a.uid)).includes('rm_idx-heal'));
     }
   },
 };

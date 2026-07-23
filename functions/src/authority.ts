@@ -52,11 +52,19 @@ export const FINISHED_GAME_TTL_MS = 24 * 60 * 60 * 1000;
  */
 function lifecyclePaths(gameId: string, state: GameState, now: number): Record<string, unknown> {
   if (state.phase !== 'playing') {
-    return {
+    const paths: Record<string, unknown> = {
       [`activeGames/${gameId}`]: null,
       [`pendingResults/${gameId}`]: state.resultsRecorded ? null : now,
       [`finishedGames/${gameId}`]: now + FINISHED_GAME_TTL_MS,
     };
+    // A finished game is no longer one you can be pulled into, so drop it from
+    // every player's active-game index — otherwise the client watcher would keep
+    // trying to route people into a match that's already over. Written atomically
+    // with the finish, like every other lifecycle index.
+    for (const p of Object.values(state.players)) {
+      paths[`userActiveGames/${p.uid}/${gameId}`] = null;
+    }
+    return paths;
   }
   return { [`activeGames/${gameId}`]: state.turnStartedAt + state.turnDurationMs };
 }

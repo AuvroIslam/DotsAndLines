@@ -29,6 +29,13 @@
       ".indexOn": ".value"
     },
 
+    "userActiveGames": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+
     "gamePresence": {
       "$gameId": {
         ".read": "auth != null",

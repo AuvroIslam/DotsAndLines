@@ -159,10 +159,18 @@ function buildGame(id, users, size = 3, overrides = {}) {
 async function seedGame(id, users, size = 3, overrides = {}) {
   const game = buildGame(id, users, size, overrides);
   const members = {};
-  for (const u of users) members[u.uid] = true;
-  await db.ref(`gameMembers/${id}`).set(members);
-  await db.ref(`games/${id}`).set(game);
-  await db.ref(`activeGames/${id}`).set(game.turnStartedAt + game.turnDurationMs);
+  const updates = {
+    [`gameMembers/${id}`]: null,
+    [`games/${id}`]: game,
+    [`activeGames/${id}`]: game.turnStartedAt + game.turnDurationMs,
+  };
+  for (const u of users) {
+    members[u.uid] = true;
+    // Mirror `commitNewGame`: a real live game always has its per-player index.
+    updates[`userActiveGames/${u.uid}/${id}`] = true;
+  }
+  updates[`gameMembers/${id}`] = members;
+  await db.ref().update(updates);
   return game;
 }
 

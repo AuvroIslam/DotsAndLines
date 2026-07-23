@@ -241,6 +241,17 @@ export const sweepAbandonedGames = onSchedule(
     await Promise.all(
       expired.map(async (gameId) => {
         try {
+          // The per-player active-game index is normally cleared on the finish
+          // transition; clear it here too from the membership list, so a game that
+          // finished before that logic existed (or slipped through) can't leave a
+          // dangling pointer that outlives the game.
+          const members =
+            ((await db().ref(`gameMembers/${gameId}`).get()).val() as Record<string, boolean> | null) ??
+            {};
+          const userIndexCleanup: Record<string, null> = {};
+          for (const uid of Object.keys(members)) {
+            userIndexCleanup[`userActiveGames/${uid}/${gameId}`] = null;
+          }
           await db().ref().update({
             [`games/${gameId}`]: null,
             [`gameMembers/${gameId}`]: null,
@@ -248,6 +259,7 @@ export const sweepAbandonedGames = onSchedule(
             [`activeGames/${gameId}`]: null,
             [`pendingResults/${gameId}`]: null,
             [`finishedGames/${gameId}`]: null,
+            ...userIndexCleanup,
           });
         } catch (err) {
           logger.error('game deletion failed', { gameId, err });

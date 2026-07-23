@@ -27,6 +27,13 @@ export const RtdbPaths = {
   // `finishedGames`) are written and read only by the server — see
   // `lifecyclePaths` in functions/src/authority.ts. Clients never touch them.
 
+  /**
+   * Per-user index of live games the player is a member of. Server-written,
+   * read-only for the owner. The client's active-game watcher subscribes here to
+   * route a player into a match made while they were elsewhere.
+   */
+  userActiveGames: (uid: string) => `userActiveGames/${uid}`,
+
   rooms: 'rooms',
   room: (roomId: string) => `rooms/${roomId}`,
   roomMembers: (roomId: string) => `rooms/${roomId}/members`,

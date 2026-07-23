@@ -56,14 +56,23 @@ async function commitNewGame(
   alsoWrite: Record<string, unknown> = {},
 ): Promise<void> {
   const members: Record<string, boolean> = {};
-  for (const p of Object.values(game.players)) members[p.uid] = true;
-
-  await db.ref().update({
+  const updates: Record<string, unknown> = {
     [`games/${game.id}`]: game,
     [`gameMembers/${game.id}`]: members,
     [`activeGames/${game.id}`]: game.turnStartedAt + game.turnDurationMs,
-    ...alsoWrite,
-  });
+  };
+  for (const p of Object.values(game.players)) {
+    members[p.uid] = true;
+    // The per-player "you are in this live game" index. Written in the *same*
+    // atomic update as the game itself, so a client can never be told it's in a
+    // game that doesn't exist, nor miss one that does. The client's active-game
+    // watcher reads this to route a player into a match made while they were
+    // elsewhere — a cancelled search, a backgrounded app, a fresh cold start.
+    // Cleared on the finish transition (see `lifecyclePaths`).
+    updates[`userActiveGames/${p.uid}/${game.id}`] = true;
+  }
+
+  await db.ref().update({ ...updates, ...alsoWrite });
 }
 
 const toPlayer = (uid: string, displayName: string, index: number): Player => ({
@@ -184,10 +193,32 @@ export async function createRematch(
   if (!Object.values(prev.players).some((p) => p.uid === uid)) {
     return { ok: false, reason: 'not_allowed' }; // only the players who played it
   }
-  if (prev.rematchGameId) return { ok: true, gameId: prev.rematchGameId }; // idempotent: join the existing one
-
   const roster = prev.turnOrder.map((id) => prev.players[id]!);
   const newGameId = `rm_${fromGameId}`;
+
+  // Build the rematch game deterministically from the finished one: same players,
+  // fixed id, running order rotated so the same player doesn't always open.
+  const buildRematchGame = (): GameState => {
+    const rotated = [...roster.slice(1), roster[0]!];
+    return GameManager.create({
+      id: newGameId,
+      mode: prev!.mode,
+      size: prev!.board.size,
+      players: rotated.map((p, i) => toPlayer(p.uid, p.displayName, i)),
+    });
+  };
+
+  if (prev.rematchGameId) {
+    // Already claimed. Normally the game exists and we just join it. But the claim
+    // (a transaction on the finished game) and the game creation (a write to a
+    // *different* node) are not one atomic step — if the create failed after the
+    // stamp landed, the pointer is dangling. Verify, and heal by re-creating it
+    // rather than sending everyone to a game that was never built. Idempotent: the
+    // id is deterministic, so a concurrent healer converges on the same game.
+    const exists = (await db.ref(`games/${prev.rematchGameId}`).get()).exists();
+    if (!exists) await commitNewGame(db, buildRematchGame());
+    return { ok: true, gameId: prev.rematchGameId };
+  }
 
   // As in `casVersion`, the Admin SDK first calls the update fn with the local
   // cache — `null` unless something keeps it warm — so hold a live listener
@@ -235,14 +266,7 @@ export async function createRematch(
   // co-winner in a dead heat just returns the same deterministic `rm_` id, so
   // they converge on one game rather than forking two.
   if (iClaimed) {
-    const rotated = [...roster.slice(1), roster[0]!]; // don't let the same player always open
-    const game = GameManager.create({
-      id: newGameId,
-      mode: prev.mode,
-      size: prev.board.size,
-      players: rotated.map((p, i) => toPlayer(p.uid, p.displayName, i)),
-    });
-    await commitNewGame(db, game);
+    await commitNewGame(db, buildRematchGame());
   }
   return { ok: true, gameId: stampedId };
 }
