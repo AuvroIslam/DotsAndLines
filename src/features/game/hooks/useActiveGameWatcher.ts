@@ -55,13 +55,17 @@ export function useActiveGameWatcher(): void {
         log('a match formed — opening it', { gameId: decision.gameId });
         router.replace(Routes.game(decision.gameId));
       } else if (decision.type === 'prompt') {
-        for (const gameId of decision.gameIds) {
-          prompted.current.add(gameId);
-          Alert.alert('Game in progress', 'You have a match still going. Rejoin it?', [
-            { text: 'Not now', style: 'cancel' },
-            { text: 'Rejoin', onPress: () => router.replace(Routes.game(gameId)) },
-          ]);
-        }
+        // One dialog at a time — stacking native Alerts is jangly, and having
+        // more than one game in progress at once is vanishingly rare. Surface the
+        // first; mark it seen so we don't re-ask. Any other still-live game is
+        // left un-seen and gets its turn on the next session (this set is
+        // per-mount), so nothing is silently dropped for good.
+        const gameId = decision.gameIds[0]!;
+        prompted.current.add(gameId);
+        Alert.alert('Game in progress', 'You have a match still going. Rejoin it?', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Rejoin', onPress: () => router.replace(Routes.game(gameId)) },
+        ]);
       }
     });
   }, [uid, router]);

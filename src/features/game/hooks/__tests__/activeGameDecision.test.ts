@@ -99,4 +99,44 @@ describe('decideActiveGame', () => {
       }),
     ).toEqual({ type: 'none' });
   });
+
+  it('prompts instead of navigating when we are already in a live game', () => {
+    // Playing g1 (in the active set) when g2 appears → don't yank out of g1.
+    expect(
+      decideActiveGame({
+        isFirstSnapshot: false,
+        previous: ['g1'],
+        current: ['g1', 'g2'],
+        currentGameId: 'g1',
+        alreadyPrompted: none,
+      }),
+    ).toEqual({ type: 'prompt', gameIds: ['g2'] });
+  });
+
+  it('still opens a rematch seamlessly from a FINISHED game screen', () => {
+    // The finished game (fin) was removed from the index when it ended, so it is
+    // not in `current` — we are on its screen but not "in a live game" — and the
+    // new rematch (rm) opens straight away rather than merely prompting.
+    expect(
+      decideActiveGame({
+        isFirstSnapshot: false,
+        previous: [],
+        current: ['rm'],
+        currentGameId: 'fin',
+        alreadyPrompted: none,
+      }),
+    ).toEqual({ type: 'navigate', gameId: 'rm' });
+  });
+
+  it('does not re-prompt a second game while in a live game once prompted', () => {
+    expect(
+      decideActiveGame({
+        isFirstSnapshot: false,
+        previous: ['g1'],
+        current: ['g1', 'g2'],
+        currentGameId: 'g1',
+        alreadyPrompted: new Set(['g2']),
+      }),
+    ).toEqual({ type: 'none' });
+  });
 });

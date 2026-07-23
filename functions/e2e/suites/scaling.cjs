@@ -372,17 +372,20 @@ module.exports = {
       await seedGame('idx-heal', [a, b]);
       await callFn('forfeitGame', { gameId: 'idx-heal' }, a);
 
-      // Stamp the pointer but never create rm_idx-heal — the dangling state.
-      await db.ref('games/idx-heal/rematchGameId').set('rm_idx-heal');
-      t.check('the pointer is set but the game does not exist', (await getGame('rm_idx-heal')) === null);
+      // Stamp the pointer at a NON-standard id (as an old-format pointer would
+      // be) and never create it — the dangling state. The heal must build the id
+      // the pointer actually names, not a differently-derived one.
+      const pointerId = 'rm_idx-heal_legacy_999';
+      await db.ref('games/idx-heal/rematchGameId').set(pointerId);
+      t.check('the pointer is set but the game does not exist', (await getGame(pointerId)) === null);
 
       const res = await createGame.createRematch(db, a.uid, 'idx-heal');
-      t.check('the retry returns the pointed-at game', res.gameId === 'rm_idx-heal', JSON.stringify(res));
+      t.check('the retry returns the pointed-at game', res.gameId === pointerId, JSON.stringify(res));
 
-      const healed = await getGame('rm_idx-heal');
-      t.check('the missing game was rebuilt', healed !== null && healed.phase === 'playing');
+      const healed = await getGame(pointerId);
+      t.check('the game the pointer NAMES was rebuilt', healed !== null && healed.phase === 'playing');
       t.check('with both players', healed && Object.keys(healed.players).length === 2);
-      t.check('and it landed in the index', (await activeGamesOf(a.uid)).includes('rm_idx-heal'));
+      t.check('and it landed in the index', (await activeGamesOf(a.uid)).includes(pointerId));
     }
   },
 };

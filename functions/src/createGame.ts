@@ -56,11 +56,7 @@ async function commitNewGame(
   alsoWrite: Record<string, unknown> = {},
 ): Promise<void> {
   const members: Record<string, boolean> = {};
-  const updates: Record<string, unknown> = {
-    [`games/${game.id}`]: game,
-    [`gameMembers/${game.id}`]: members,
-    [`activeGames/${game.id}`]: game.turnStartedAt + game.turnDurationMs,
-  };
+  const updates: Record<string, unknown> = {};
   for (const p of Object.values(game.players)) {
     members[p.uid] = true;
     // The per-player "you are in this live game" index. Written in the *same*
@@ -72,7 +68,13 @@ async function commitNewGame(
     updates[`userActiveGames/${p.uid}/${game.id}`] = true;
   }
 
-  await db.ref().update({ ...updates, ...alsoWrite });
+  await db.ref().update({
+    [`games/${game.id}`]: game,
+    [`gameMembers/${game.id}`]: members,
+    [`activeGames/${game.id}`]: game.turnStartedAt + game.turnDurationMs,
+    ...updates,
+    ...alsoWrite,
+  });
 }
 
 const toPlayer = (uid: string, displayName: string, index: number): Player => ({
@@ -197,11 +199,14 @@ export async function createRematch(
   const newGameId = `rm_${fromGameId}`;
 
   // Build the rematch game deterministically from the finished one: same players,
-  // fixed id, running order rotated so the same player doesn't always open.
-  const buildRematchGame = (): GameState => {
+  // running order rotated so the same player doesn't always open. The id is
+  // passed in rather than assumed, so the healing path below always builds the
+  // exact game its pointer names — never a differently-named one it then points
+  // nowhere.
+  const buildRematchGame = (id: string): GameState => {
     const rotated = [...roster.slice(1), roster[0]!];
     return GameManager.create({
-      id: newGameId,
+      id,
       mode: prev!.mode,
       size: prev!.board.size,
       players: rotated.map((p, i) => toPlayer(p.uid, p.displayName, i)),
@@ -212,11 +217,11 @@ export async function createRematch(
     // Already claimed. Normally the game exists and we just join it. But the claim
     // (a transaction on the finished game) and the game creation (a write to a
     // *different* node) are not one atomic step — if the create failed after the
-    // stamp landed, the pointer is dangling. Verify, and heal by re-creating it
-    // rather than sending everyone to a game that was never built. Idempotent: the
-    // id is deterministic, so a concurrent healer converges on the same game.
+    // stamp landed, the pointer is dangling. Verify, and heal by building the game
+    // the pointer *actually names* rather than sending everyone to a game that was
+    // never built. Idempotent: the id is fixed, so a concurrent healer converges.
     const exists = (await db.ref(`games/${prev.rematchGameId}`).get()).exists();
-    if (!exists) await commitNewGame(db, buildRematchGame());
+    if (!exists) await commitNewGame(db, buildRematchGame(prev.rematchGameId));
     return { ok: true, gameId: prev.rematchGameId };
   }
 
@@ -266,7 +271,7 @@ export async function createRematch(
   // co-winner in a dead heat just returns the same deterministic `rm_` id, so
   // they converge on one game rather than forking two.
   if (iClaimed) {
-    await commitNewGame(db, buildRematchGame());
+    await commitNewGame(db, buildRematchGame(newGameId));
   }
   return { ok: true, gameId: stampedId };
 }
