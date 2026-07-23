@@ -128,5 +128,41 @@ module.exports = {
       // And a client cannot forge the assignment itself.
       t.check('client CANNOT stamp a gameId onto a ticket', (await clientPut(`matchmaking/queue/${c.uid}/gameId`, 'anything', c)) >= 400);
     }
+
+    t.section('matchmaking: a claim expires, so a claimer who vanishes cannot deadlock the queue');
+    {
+      // The bug this guards: A claims B, then cancels/crashes before the game is
+      // built. B's ticket keeps `claimedBy: A`, and the old rule only let a claim
+      // land on an *unclaimed* ticket — so nobody could ever take B again and B
+      // was frozen out of matchmaking permanently.
+      const [a, b, c] = [await signUp(), await signUp(), await signUp()];
+      const ticket = (u) => ({ uid: u.uid, displayName: 'x', enqueuedAt: Date.now(), boardSize: 3 });
+      await db.ref(`matchmaking/queue/${b.uid}`).set(ticket(b));
+
+      // A claims B, fresh.
+      t.check(
+        'a player may claim an unclaimed ticket',
+        (await clientPut(`matchmaking/queue/${b.uid}`, { ...ticket(b), claimedBy: a.uid, claimedAt: Date.now() }, a)) < 400,
+      );
+
+      // While that claim is live, nobody else may take B.
+      t.check(
+        'another player CANNOT steal a live claim',
+        (await clientPut(`matchmaking/queue/${b.uid}`, { ...ticket(b), claimedBy: c.uid, claimedAt: Date.now() }, c)) >= 400,
+      );
+
+      // The claimer may re-affirm their own claim (e.g. retrying).
+      t.check(
+        'the holder may re-affirm its own claim',
+        (await clientPut(`matchmaking/queue/${b.uid}`, { ...ticket(b), claimedBy: a.uid, claimedAt: Date.now() }, a)) < 400,
+      );
+
+      // Now let the claim go stale (claimer vanished). A different player may take it.
+      await db.ref(`matchmaking/queue/${b.uid}/claimedAt`).set(Date.now() - 20_000);
+      t.check(
+        'a STALE claim can be taken over, breaking the deadlock',
+        (await clientPut(`matchmaking/queue/${b.uid}`, { ...ticket(b), claimedBy: c.uid, claimedAt: Date.now() }, c)) < 400,
+      );
+    }
   },
 };

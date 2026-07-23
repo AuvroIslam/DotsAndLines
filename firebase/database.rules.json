@@ -76,13 +76,16 @@
       "queue": {
         ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && (auth.uid == $uid || (data.exists() && !data.child('claimedBy').exists() && newData.child('claimedBy').val() == auth.uid))",
+          ".write": "auth != null && (auth.uid == $uid || (data.exists() && newData.child('claimedBy').val() == auth.uid && (!data.child('claimedBy').exists() || data.child('claimedBy').val() == auth.uid || !data.child('claimedAt').exists() || data.child('claimedAt').val() < now - 10000)))",
 
           "gameId": {
             ".validate": false
           },
           "claimedBy": {
             ".validate": "newData.isString()"
+          },
+          "claimedAt": {
+            ".validate": "newData.isNumber()"
           }
         }
       }

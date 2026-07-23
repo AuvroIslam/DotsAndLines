@@ -14,7 +14,30 @@ const log = createLogger('MM');
 // can't permanently block real players from pairing.
 const MAX_TICKET_AGE_MS = 60_000;
 
-type QueuedTicket = MatchmakingTicket & { gameId?: string; claimedBy?: string };
+// How long a claim on an opponent's ticket holds before anyone else may take it.
+// A claim is a short-lived lock: the claimer immediately asks the server to build
+// the game (~1s), so this only needs to outlast that round trip. Crucially it
+// must *expire* — a claimer who cancels or crashes between claiming and creating
+// used to leave the opponent's ticket stamped with a claim that the security
+// rules would never let anyone overwrite, deadlocking that player out of
+// matchmaking for good. Keep in step with the rule in database.rules.json.
+const CLAIM_TTL_MS = 10_000;
+
+type QueuedTicket = MatchmakingTicket & {
+  gameId?: string;
+  claimedBy?: string;
+  claimedAt?: number;
+};
+
+/** A claim that is still live: held by someone else, and not yet expired. */
+function claimedByOther(t: QueuedTicket, meUid: string, now: number): boolean {
+  return (
+    !!t.claimedBy &&
+    t.claimedBy !== meUid &&
+    typeof t.claimedAt === 'number' &&
+    now - t.claimedAt < CLAIM_TTL_MS
+  );
+}
 
 /**
  * Random matchmaking (2 players only). A player enqueues a ticket, then a
@@ -119,7 +142,10 @@ export const matchmakingRepository = {
           t.uid !== me.uid &&
           !t.gameId &&
           t.boardSize === me.boardSize &&
-          now - t.enqueuedAt < MAX_TICKET_AGE_MS,
+          now - t.enqueuedAt < MAX_TICKET_AGE_MS &&
+          // Skip someone another player is actively pairing with; a *stale* claim
+          // (claimer gone) or one we hold ourselves is fair game.
+          !claimedByOther(t, me.uid, now),
       )
       .sort((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
 
@@ -154,9 +180,11 @@ export const matchmakingRepository = {
         // for a node we haven't synced. Returning undefined here would abort
         // without ever fetching server data, so seed the write from the snapshot
         // we already read — RTDB then re-runs with authoritative server data.
-        if (t === null) return { ...opponent, claimedBy: me.uid };
-        if (t.claimedBy || t.gameId) return; // already claimed by someone else -> abort
-        return { ...t, claimedBy: me.uid };
+        if (t === null) return { ...opponent, claimedBy: me.uid, claimedAt: Date.now() };
+        if (t.gameId) return; // already in a game -> abort
+        if (claimedByOther(t, me.uid, Date.now())) return; // live claim by someone else -> abort
+        // Unclaimed, ours already, or a stale claim we may take over.
+        return { ...t, claimedBy: me.uid, claimedAt: Date.now() };
       });
       committed = claim.committed;
     } catch (e) {
