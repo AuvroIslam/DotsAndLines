@@ -16,6 +16,8 @@ interface GameOverlayProps {
   iOfferedRematch?: boolean;
   /** Someone else has asked for a rematch and is waiting on this player. */
   othersOfferedRematch?: boolean;
+  /** We're waiting, but a player who still needs to agree has left — no rematch is coming. */
+  rematchStalled?: boolean;
   /** Retract a standing rematch offer, so a waiting player is never trapped. */
   onCancelRematch?: () => void;
 }
@@ -28,6 +30,7 @@ export function GameOverlay({
   onRematch,
   iOfferedRematch,
   othersOfferedRematch,
+  rematchStalled,
   onCancelRematch,
 }: GameOverlayProps) {
   const colors = useThemeColors();
@@ -99,10 +102,18 @@ export function GameOverlay({
 
         {onRematch ? (
           iOfferedRematch ? (
-            // We've asked; nothing starts until they do. Keep the button live as
-            // a way *out* of the wait — a disabled "Waiting…" trapped a player
-            // whose opponent had simply left, with no way to take the offer back.
-            <Button label="Waiting for opponent — tap to cancel" onPress={onCancelRematch ?? onExit} />
+            rematchStalled ? (
+              // The player we're waiting on has left — no rematch is coming. Say
+              // so plainly instead of spinning forever; Back to Home is below.
+              <Typography variant="body" muted center>
+                Opponent left — no rematch
+              </Typography>
+            ) : (
+              // We've asked; nothing starts until they do. Keep the button live as
+              // a way *out* of the wait — a disabled "Waiting…" trapped a player
+              // whose opponent had simply left, with no way to take the offer back.
+              <Button label="Waiting for opponent — tap to cancel" onPress={onCancelRematch ?? onExit} />
+            )
           ) : (
             <Button
               label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}

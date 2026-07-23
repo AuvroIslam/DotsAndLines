@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -18,9 +18,10 @@ import {
   useTrackPlayerConnection,
   useTurnTimer,
 } from '@/features/game';
+import { PresenceChecker } from '@/gameEngine';
 import { Routes } from '@/navigation/routes';
 import { haptics, sound } from '@/services/feedback';
-import { gameFunctions } from '@/services/firebase';
+import { gameFunctions, serverNow } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
@@ -110,6 +111,32 @@ export default function GameScreen() {
     },
     [gameId],
   );
+
+  // A rematch needs everyone to agree, so a lone waiter whose opponent has left
+  // would otherwise sit on "Waiting…" forever. Detect it: I've offered, but a
+  // player who still needs to agree is away (they hit Back to Home, or dropped).
+  // Ticks so a silent drop (stale heartbeat) is caught too, not just a graceful
+  // leave. Cosmetic — the offer/accept flow still decides; this only tells the
+  // truth on screen instead of spinning.
+  const [rematchStalled, setRematchStalled] = useState(false);
+  useEffect(() => {
+    if (!game || !iOfferedRematch) {
+      setRematchStalled(false);
+      return;
+    }
+    const check = () =>
+      setRematchStalled(
+        game.turnOrder.some((pid) => {
+          const p = game.players[pid];
+          if (!p || p.uid === uid) return false; // not me
+          if (game.rematchOffers?.[p.uid]) return false; // they've already agreed
+          return PresenceChecker.isAway(presence[pid], serverNow()); // gone
+        }),
+      );
+    check();
+    const id = setInterval(check, 1_000);
+    return () => clearInterval(id);
+  }, [game, presence, uid, iOfferedRematch]);
 
   // A game we've never seen is still loading; one that has *gone* was deleted
   // (finished games are cleaned up after a day) or never existed at all. Without
@@ -232,6 +259,7 @@ export default function GameScreen() {
             !!uid &&
             Object.keys(game.rematchOffers ?? {}).some((offeredBy) => offeredBy !== uid)
           }
+          rematchStalled={rematchStalled}
           onRematch={handleRematch}
           onCancelRematch={handleCancelRematch}
         />
