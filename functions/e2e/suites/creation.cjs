@@ -164,5 +164,55 @@ module.exports = {
         (await clientPut(`matchmaking/queue/${b.uid}`, { ...ticket(b), claimedBy: c.uid, claimedAt: Date.now() }, c)) < 400,
       );
     }
+
+    t.section('rooms: a non-host can actually join an open room');
+    {
+      // The bug this guards: `joinRoom` runs a transaction that rewrites the whole
+      // room node — including `hostUid` with its unchanged value. The `hostUid`
+      // validate rule fired on that write and, for anyone but the host, rejected
+      // it (old value != my uid), so a joiner's write could never commit: entering
+      // a code spun forever and never added you. The e2e never caught it because it
+      // seeds rooms with the admin SDK, which bypasses the rules entirely.
+      const [host, joiner] = [await signUp(), await signUp()];
+      const now = Date.now();
+      const room = {
+        id: 'joinme',
+        code: 'JOINME',
+        hostUid: host.uid,
+        mode: 'friend',
+        boardSize: 3,
+        maxPlayers: 2,
+        status: 'open',
+        members: {
+          [host.uid]: { uid: host.uid, displayName: 'H', index: 0, isReady: true, isHost: true, joinedAt: now },
+        },
+        gameId: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.ref('rooms/joinme').set(room);
+
+      // The joiner writes the room back with themselves added — exactly what the
+      // join transaction commits. This is the write that was being rejected.
+      const withJoiner = {
+        ...room,
+        members: {
+          ...room.members,
+          [joiner.uid]: { uid: joiner.uid, displayName: 'J', index: 1, isReady: false, isHost: false, joinedAt: Date.now() },
+        },
+        updatedAt: Date.now(),
+      };
+      t.check(
+        'a non-host may write the room with themselves added',
+        (await clientPut('rooms/joinme', withJoiner, joiner)) < 400,
+      );
+
+      // But a non-host still cannot HIJACK the host seat.
+      const hijack = { ...withJoiner, hostUid: joiner.uid };
+      t.check(
+        'a non-host CANNOT change hostUid to themselves',
+        (await clientPut('rooms/joinme', hijack, joiner)) >= 400,
+      );
+    }
   },
 };

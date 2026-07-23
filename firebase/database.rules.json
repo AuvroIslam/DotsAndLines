@@ -54,7 +54,7 @@
         ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists() || newData.child('members').child(auth.uid).exists() || data.child('hostUid').val() == auth.uid)",
 
         "hostUid": {
-          ".validate": "!data.exists() || data.val() === auth.uid"
+          ".validate": "!data.exists() || newData.val() === data.val() || data.val() === auth.uid"
         },
         "gameId": {
           ".validate": false
