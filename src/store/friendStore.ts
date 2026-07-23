@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { friendRepository, userRepository } from '@/services/firebase';
+import type { SendResult } from '@/services/firebase/friendRepository';
 import type { Friend, FriendRequest, UserProfile } from '@/types';
 
 interface FriendStoreState {
@@ -13,7 +14,7 @@ interface FriendStoreState {
   /** Subscribe to friends + incoming requests for a user. Returns teardown. */
   subscribe: (uid: string) => () => void;
   search: (prefix: string, selfUid: string) => Promise<void>;
-  sendRequest: (from: UserProfile, toUid: string) => Promise<void>;
+  sendRequest: (from: UserProfile, toUid: string) => Promise<SendResult | null>;
   acceptRequest: (request: FriendRequest, self: UserProfile) => Promise<void>;
   declineRequest: (requestId: string) => Promise<void>;
   removeFriend: (selfUid: string, friendUid: string) => Promise<void>;
@@ -52,7 +53,12 @@ export const useFriendStore = create<FriendStoreState>((set) => ({
   },
 
   sendRequest: async (from, toUid) => {
-    await friendRepository.sendRequest(from, toUid);
+    try {
+      return await friendRepository.sendRequest(from, toUid);
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return null;
+    }
   },
 
   acceptRequest: async (request, self) => {

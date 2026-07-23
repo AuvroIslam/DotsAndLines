@@ -95,7 +95,11 @@ export const userRepository = {
     return exceptUid !== undefined && snap.docs[0]?.id === exceptUid;
   },
 
-  async searchByUsername(prefix: string, max = 10): Promise<UserProfile[]> {
+  async searchByUsername(rawPrefix: string, max = 10): Promise<UserProfile[]> {
+    // Usernames are stored lowercase (see generateUsername), so match that here —
+    // otherwise a range scan is case-sensitive and "clever" never finds
+    // "cleverhawk562" typed as "Clever".
+    const prefix = rawPrefix.toLowerCase();
     // Firestore prefix search via range query on the indexed username field.
     const end = prefix + String.fromCharCode(0xf8ff);
     const q = query(

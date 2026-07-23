@@ -24,6 +24,7 @@ const SUITES = [
   require('./suites/rooms.cjs'),
   require('./suites/results.cjs'),
   require('./suites/scaling.cjs'),
+  require('./suites/friends.cjs'),
 ];
 
 async function main() {

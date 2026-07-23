@@ -35,17 +35,37 @@ export interface FriendRequest {
   toUid: string;
   fromDisplayName: string;
   fromUsername: string;
+  /** Snapshot so accepting needs no extra read to build the friendship. */
+  fromPhotoURL: string | null;
   status: FriendRequestStatus;
   createdAt: number;
 }
 
+/** The display fields a friendship caches for one member, so the list renders from one query. */
+export interface FriendProfileSnapshot {
+  displayName: string;
+  username: string;
+  photoURL: string | null;
+}
+
+/**
+ * A friendship as a single shared edge document, keyed by the sorted uid pair.
+ * `users` drives the `array-contains` query ("my friends"); `profiles` carries a
+ * light snapshot of each member so the list needs no per-friend profile read.
+ * Presence (online/offline) is NOT stored here — it's read live from RTDB.
+ */
+export interface Friendship {
+  users: string[];
+  profiles: Record<string, FriendProfileSnapshot>;
+  createdAt: number;
+}
+
+/** A friend as rendered in the list — derived from a Friendship, not stored. */
 export interface Friend {
   uid: string;
   displayName: string;
   username: string;
   photoURL: string | null;
-  /** Realtime-Database-backed presence flag, denormalized for list rendering. */
-  isOnline: boolean;
   since: number;
 }
 

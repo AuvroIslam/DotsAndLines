@@ -12,7 +12,13 @@ const ADJECTIVES = [
 ];
 const NOUNS = ['Fox', 'Otter', 'Falcon', 'Tiger', 'Panda', 'Wolf', 'Raven', 'Lynx', 'Bear', 'Hawk'];
 
-/** Deterministic, friendly username derived from a uid (stable per user). */
+/**
+ * Deterministic, friendly username derived from a uid (stable per user).
+ *
+ * Always lowercase: Firestore has no case-insensitive query, and search is a
+ * range scan over this field, so storing (and searching) one canonical case is
+ * what makes "clever" find "CleverHawk562" without a second denormalised field.
+ */
 export function generateUsername(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i += 1) {
@@ -21,7 +27,7 @@ export function generateUsername(seed: string): string {
   const adj = ADJECTIVES[hash % ADJECTIVES.length];
   const noun = NOUNS[(hash >> 8) % NOUNS.length];
   const num = hash % 1000;
-  return `${adj}${noun}${num}`;
+  return `${adj}${noun}${num}`.toLowerCase();
 }
 
 /** Reasonably-unique id for client-generated documents. */

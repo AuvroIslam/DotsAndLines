@@ -4,8 +4,10 @@ export const Collections = {
   users: 'users',
   statistics: 'statistics',
   settings: 'settings',
-  friends: 'friends', // subcollection: users/{uid}/friends/{friendUid}
   friendRequests: 'friendRequests',
+  // One shared edge doc per friendship, keyed by the sorted uid pair. Replaces
+  // the old two reciprocal `users/{uid}/friends/{friendUid}` docs.
+  friendships: 'friendships',
   matchHistory: 'matchHistory', // subcollection: users/{uid}/matchHistory/{id}
   leaderboard: 'leaderboard',
 } as const;
