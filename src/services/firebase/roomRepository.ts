@@ -9,6 +9,13 @@ import { RtdbPaths } from './paths';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
 
+/**
+ * When to first let the sweep look at a freshly-created room. A lobby that's
+ * never started and sits idle past the server's threshold gets deleted; the
+ * server re-arms this while the lobby is still active, so it isn't sync-critical.
+ */
+const ROOM_FIRST_CHECK_MS = 15 * 60 * 1000;
+
 function generateCode(): string {
   let code = '';
   for (let i = 0; i < ROOM_CODE_LENGTH; i += 1) {
@@ -66,6 +73,10 @@ export const roomRepository = {
 
     await set(roomRef, room);
     await set(ref(realtimeDb, RtdbPaths.roomCodeIndex(code)), id);
+    // Arm cleanup so an abandoned lobby (created, never started) can't leak. The
+    // server re-arms this while the lobby is active and shortens it once a game
+    // starts (see the `staleRooms` sweep step).
+    await set(ref(realtimeDb, RtdbPaths.staleRoom(id)), now + ROOM_FIRST_CHECK_MS);
     return room;
   },
 
@@ -125,6 +136,7 @@ export const roomRepository = {
     if (Object.keys(remaining).length === 0) {
       await remove(node);
       await remove(ref(realtimeDb, RtdbPaths.roomCodeIndex(room.code)));
+      await remove(ref(realtimeDb, RtdbPaths.staleRoom(roomId))); // no orphan cleanup entry
       return;
     }
 

@@ -12,6 +12,7 @@ const {
   getGame,
   getDue,
   seedGame,
+  seedRoom,
   startGameFromRoom,
   TURN_MS,
 } = require('../lib/harness.cjs');
@@ -386,6 +387,60 @@ module.exports = {
       t.check('the game the pointer NAMES was rebuilt', healed !== null && healed.phase === 'playing');
       t.check('with both players', healed && Object.keys(healed.players).length === 2);
       t.check('and it landed in the index', (await activeGamesOf(a.uid)).includes(pointerId));
+    }
+
+    t.section('rooms are cleaned up once their game starts');
+    {
+      // Rooms live in their own tree and nothing used to delete them: every
+      // custom game left its room (and its reserved code) behind forever.
+      const [a, b] = [await signUp(), await signUp()];
+      await startGameFromRoom('cg-started', [a, b]);
+      const code = (await db.ref('rooms/cg-started/code').get()).val();
+      await db.ref(`roomCodes/${code}`).set('cg-started'); // as the real createRoom would
+
+      t.check(
+        'starting a game arms the room for cleanup',
+        typeof (await db.ref('staleRooms/cg-started').get()).val() === 'number',
+      );
+
+      const outcome = await createGame.sweepStaleRoom(db, 'cg-started', Date.now());
+      t.check('a started room is deleted', outcome === 'deleted', outcome);
+      t.check('the room is gone', (await db.ref('rooms/cg-started').get()).val() === null);
+      t.check('its code is freed', (await db.ref(`roomCodes/${code}`).get()).val() === null);
+      t.check('it left the cleanup index', (await db.ref('staleRooms/cg-started').get()).val() === null);
+    }
+
+    t.section('an abandoned lobby is deleted, but an active one is spared');
+    {
+      const [a, b] = [await signUp(), await signUp()];
+
+      // Open lobby, last touched an hour ago → abandoned → deleted.
+      await seedRoom('cg-idle', [a], 3);
+      await db.ref('roomCodes/CG-IDL').set('cg-idle');
+      await db.ref('rooms/cg-idle/code').set('CG-IDL');
+      await db.ref('rooms/cg-idle/updatedAt').set(Date.now() - 60 * 60_000);
+      const idle = await createGame.sweepStaleRoom(db, 'cg-idle', Date.now());
+      t.check('an abandoned open lobby is deleted', idle === 'deleted', idle);
+      t.check('its code is freed', (await db.ref('roomCodes/CG-IDL').get()).val() === null);
+
+      // Open lobby, touched just now → still active → re-armed, NOT deleted.
+      await seedRoom('cg-active', [a, b], 3);
+      await db.ref('rooms/cg-active/updatedAt').set(Date.now());
+      const active = await createGame.sweepStaleRoom(db, 'cg-active', Date.now());
+      t.check('an active lobby is spared', active === 'rearmed', active);
+      t.check('the room still exists', (await db.ref('rooms/cg-active').get()).val() !== null);
+      t.check(
+        'its cleanup is pushed to the future',
+        (await db.ref('staleRooms/cg-active').get()).val() > Date.now(),
+      );
+
+      // A room already gone (last member left) → just clear the dangling index entry.
+      await db.ref('staleRooms/cg-missing').set(Date.now() - 1000);
+      const gone = await createGame.sweepStaleRoom(db, 'cg-missing', Date.now());
+      t.check(
+        'a vanished room clears its index entry',
+        gone === 'gone' && (await db.ref('staleRooms/cg-missing').get()).val() === null,
+      );
     }
   },
 };

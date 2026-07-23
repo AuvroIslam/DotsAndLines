@@ -19,6 +19,7 @@ import {
   createGameFromMatch,
   createGameFromRoom,
   createRematch,
+  sweepStaleRoom,
   withdrawRematch,
 } from './createGame';
 
@@ -263,6 +264,22 @@ export const sweepAbandonedGames = onSchedule(
           });
         } catch (err) {
           logger.error('game deletion failed', { gameId, err });
+        }
+      }),
+    );
+
+    // 4. Stale rooms. Rooms live in their own tree, untouched by the game cleanup
+    //    above, and nothing else deletes them — a started room is dead weight and
+    //    an abandoned lobby leaks its reserved code. `sweepStaleRoom` deletes the
+    //    dead ones and re-arms the ones still in active use.
+    const staleRoomIds = await dueIn('staleRooms', now);
+    if (staleRoomIds.length) logger.info('checking stale rooms', { count: staleRoomIds.length });
+    await Promise.all(
+      staleRoomIds.map(async (roomId) => {
+        try {
+          await sweepStaleRoom(db(), roomId, Date.now());
+        } catch (err) {
+          logger.error('room cleanup failed', { roomId, err });
         }
       }),
     );

@@ -72,6 +72,13 @@
       }
     },
 
+    "staleRooms": {
+      ".indexOn": ".value",
+      "$roomId": {
+        ".write": "auth != null && (!newData.exists() || newData.isNumber())"
+      }
+    },
+
     "matchmaking": {
       "queue": {
         ".read": "auth != null",

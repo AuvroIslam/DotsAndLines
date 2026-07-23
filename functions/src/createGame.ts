@@ -41,6 +41,17 @@ type QueuedTicket = MatchmakingTicket & { gameId?: string; claimedBy?: string };
 export const REMATCH_OFFER_TTL_MS = 3 * 60 * 1000;
 
 /**
+ * How long a room lingers after its game starts before the sweep deletes it.
+ * Once the game exists the room is dead weight — long enough only for the
+ * lobby→game navigation to finish. See `sweepStaleRoom`.
+ */
+export const ROOM_CLEANUP_AFTER_START_MS = 2 * 60 * 1000;
+/** An open lobby idle this long (no joins/leaves) is treated as abandoned. */
+export const ROOM_IDLE_MAX_MS = 30 * 60 * 1000;
+/** How far out to re-arm the check for a room that's still an active lobby. */
+export const ROOM_RECHECK_MS = 15 * 60 * 1000;
+
+/**
  * Write a new game, its membership index and its turn-deadline index in a single
  * atomic multi-path update.
  *
@@ -114,8 +125,46 @@ export async function createGameFromRoom(
     [`rooms/${roomId}/status`]: 'in_progress',
     [`rooms/${roomId}/gameId`]: gameId,
     [`rooms/${roomId}/updatedAt`]: Date.now(),
+    // The room has done its job; arm its deletion so it (and its code) don't leak.
+    [`staleRooms/${roomId}`]: Date.now() + ROOM_CLEANUP_AFTER_START_MS,
   });
   return { ok: true, gameId };
+}
+
+/**
+ * Decide the fate of one room the sweep found due in `staleRooms`, and act.
+ *
+ * Rooms live in their own tree, untouched by the game cleanup, and nothing else
+ * deletes them. A room whose game has started is dead weight once everyone has
+ * navigated in; a lobby nobody ever started (or long abandoned) just leaks, along
+ * with its reserved code. But a lobby people are actively sitting in must NOT be
+ * deleted out from under them — so an open, recently-touched room is re-armed for
+ * a later check instead. Extracted from the sweep so it can be tested directly.
+ */
+export async function sweepStaleRoom(
+  db: Database,
+  roomId: string,
+  now: number,
+): Promise<'deleted' | 'rearmed' | 'gone'> {
+  const room = (await db.ref(`rooms/${roomId}`).get()).val() as Room | null;
+  if (!room) {
+    await db.ref(`staleRooms/${roomId}`).remove(); // already gone (e.g. last member left)
+    return 'gone';
+  }
+
+  const started = !!room.gameId || room.status !== 'open';
+  const idleFor = now - (room.updatedAt ?? room.createdAt ?? 0);
+  if (started || idleFor > ROOM_IDLE_MAX_MS) {
+    await db.ref().update({
+      [`rooms/${roomId}`]: null,
+      [`roomCodes/${room.code}`]: null,
+      [`staleRooms/${roomId}`]: null,
+    });
+    return 'deleted';
+  }
+
+  await db.ref(`staleRooms/${roomId}`).set(now + ROOM_RECHECK_MS);
+  return 'rearmed';
 }
 
 /**
