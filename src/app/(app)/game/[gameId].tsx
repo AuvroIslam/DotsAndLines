@@ -153,27 +153,28 @@ export default function GameScreen() {
     );
   }
 
+  const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
+
   const handleLeave = () => {
-    if (!myPlayerId || game.phase !== 'playing') {
+    // Nothing to concede — the game's over, you're already out, or you're not a
+    // player. Just leave.
+    if (!myPlayerId || game.phase !== 'playing' || iAmEliminated) {
       router.replace(Routes.home);
       return;
     }
-    Alert.alert('Leave game?', 'Your opponent(s) will win.', [
+    Alert.alert('Forfeit game?', "You'll concede this game — then you can offer a rematch.", [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Leave',
+        text: 'Forfeit',
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            try {
-              await forfeit();
-            } finally {
-              // Leave regardless. If the forfeit request failed we still take the
-              // player out of the game they chose to leave — the turn clock will
-              // resolve the match for them. Stranding them on a board they've quit,
-              // with a button that silently did nothing, is the worse outcome.
-              router.replace(Routes.home);
-            }
+            // On success the game becomes finished and the result overlay appears
+            // right here — where you can offer a rematch or go home. Only bail to
+            // home if the request FAILED, so you're not stranded on a live board
+            // with a button that silently did nothing.
+            const accepted = await forfeit();
+            if (!accepted) router.replace(Routes.home);
           })();
         },
       },
@@ -203,7 +204,6 @@ export default function GameScreen() {
 
   const handleExitFinished = () => router.replace(Routes.home);
 
-  const iAmEliminated = !!myPlayerId && game.players[myPlayerId]?.isEliminated;
   const turnLabel =
     game.phase === 'finished'
       ? 'Game over'
@@ -216,7 +216,13 @@ export default function GameScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Button label="Leave" variant="ghost" onPress={handleLeave} />
+        {/* Concede an in-progress game (then you can rematch); an eliminated
+            spectator or a finished game just leaves. */}
+        <Button
+          label={iAmEliminated || game.phase !== 'playing' ? 'Leave' : 'Forfeit'}
+          variant="ghost"
+          onPress={handleLeave}
+        />
         <ConnectionBanner status={connection} />
         <View style={styles.spacer} />
       </View>
