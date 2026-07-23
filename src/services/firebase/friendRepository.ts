@@ -12,9 +12,12 @@ import {
 } from 'firebase/firestore';
 
 import type { Friend, FriendRequest, UserProfile } from '@/types';
+import { createLogger } from '@/utils';
 
 import { firestore } from './config';
 import { Collections } from './paths';
+
+const log = createLogger('FRIENDS');
 
 function friendRequestId(fromUid: string, toUid: string): string {
   return `${fromUid}_${toUid}`;
@@ -48,16 +51,25 @@ export const friendRepository = {
       where('toUid', '==', uid),
       where('status', '==', 'pending'),
     );
-    return onSnapshot(q, (snap) => {
-      cb(snap.docs.map((d) => d.data() as FriendRequest));
-    });
+    // An error handler is mandatory: without it a transient listener error (a
+    // token refresh mid-attach, a rules-propagation blip) escapes as an uncaught
+    // promise rejection and pops a "Missing or insufficient permissions" toast
+    // over a feature that is otherwise working. The SDK re-attaches on its own, so
+    // logging is the right response.
+    return onSnapshot(
+      q,
+      (snap) => cb(snap.docs.map((d) => d.data() as FriendRequest)),
+      (e) => log.error('incoming-requests listener error (retrying)', describe(e)),
+    );
   },
 
   subscribeFriends(uid: string, cb: (friends: Friend[]) => void): () => void {
     const ref = collection(firestore, Collections.users, uid, Collections.friends);
-    return onSnapshot(ref, (snap) => {
-      cb(snap.docs.map((d) => d.data() as Friend));
-    });
+    return onSnapshot(
+      ref,
+      (snap) => cb(snap.docs.map((d) => d.data() as Friend)),
+      (e) => log.error('friends listener error (retrying)', describe(e)),
+    );
   },
 
   async getFriends(uid: string): Promise<Friend[]> {
@@ -118,3 +130,8 @@ export const friendRepository = {
     await batch.commit();
   },
 };
+
+function describe(e: unknown): { code?: string; message: string } {
+  const err = e as { code?: string; message?: string };
+  return { code: err?.code, message: err?.message ?? String(e) };
+}
