@@ -40,6 +40,8 @@ export const RtdbPaths = {
   room: (roomId: string) => `rooms/${roomId}`,
   roomMembers: (roomId: string) => `rooms/${roomId}/members`,
   roomMember: (roomId: string, uid: string) => `rooms/${roomId}/members/${uid}`,
+  /** Marker of a friend the host invited to this room; lets the sweep clear their invite. */
+  roomInvitedUid: (roomId: string, uid: string) => `rooms/${roomId}/invitedUids/${uid}`,
   roomCodeIndex: (code: string) => `roomCodes/${code}`,
   /** Due-index for room cleanup: when the sweep should next consider deleting a room. */
   staleRoom: (roomId: string) => `staleRooms/${roomId}`,

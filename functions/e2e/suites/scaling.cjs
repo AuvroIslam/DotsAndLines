@@ -471,6 +471,16 @@ module.exports = {
         )) >= 400,
       );
       t.check(
+        'an invite whose roomId does not match its key is refused',
+        // The record would send the recipient to a different room than the key —
+        // validate binds the body's roomId to the key to stop that.
+        (await clientPut(
+          `gameInvites/${invitee.uid}/mismatch`,
+          { ...invite, roomId: 'somewhere-else' },
+          inviter,
+        )) >= 400,
+      );
+      t.check(
         'a third party cannot clear someone else’s invite',
         (await clientPut(`gameInvites/${invitee.uid}/inv-room`, null, stranger)) >= 400,
       );

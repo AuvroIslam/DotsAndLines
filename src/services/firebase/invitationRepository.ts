@@ -1,4 +1,4 @@
-import { onValue, ref, remove, set } from 'firebase/database';
+import { onValue, ref, remove, update } from 'firebase/database';
 
 import type { BoardSize, GameInvite, UserProfile } from '@/types';
 import { createLogger } from '@/utils';
@@ -31,9 +31,14 @@ export const invitationRepository = {
       boardSize,
       createdAt: Date.now(),
     };
-    // A room-side marker so the sweep can clear this invite when it deletes the room.
-    await set(ref(realtimeDb, `rooms/${roomId}/invitedUids/${toUid}`), true);
-    await set(ref(realtimeDb, RtdbPaths.gameInvite(toUid, roomId)), invite);
+    // One atomic multi-path write: the invite itself and a room-side marker so the
+    // sweep can clear it when it deletes the room. Both, or neither — never a
+    // marker without an invite (or vice versa). Each path is checked against its
+    // own security rule.
+    await update(ref(realtimeDb), {
+      [RtdbPaths.roomInvitedUid(roomId, toUid)]: true,
+      [RtdbPaths.gameInvite(toUid, roomId)]: invite,
+    });
   },
 
   /** Watch my incoming invitations. Error handler is mandatory (see friendRepository). */

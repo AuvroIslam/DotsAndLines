@@ -7,7 +7,7 @@ import { Routes } from '@/navigation/routes';
 import { invitationRepository, roomRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import { theme } from '@/theme';
-import { BOARD_VARIANTS } from '@/utils';
+import { alertActionFailed, BOARD_VARIANTS } from '@/utils';
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -19,19 +19,24 @@ export default function NotificationsScreen() {
 
   const join = async (roomId: string) => {
     if (!profile) return;
-    const res = await roomRepository.joinRoom(roomId, {
-      uid: profile.uid,
-      displayName: profile.displayName,
-    });
-    // Either way the invite has served its purpose — drop it.
-    void invitationRepository.remove(profile.uid, roomId);
-    if (res.ok) {
-      router.replace(Routes.lobby(roomId));
-    } else {
-      Alert.alert(
-        'Invite expired',
-        res.reason === 'full' ? 'That room is full.' : 'That game is no longer available.',
-      );
+    try {
+      const res = await roomRepository.joinRoom(roomId, {
+        uid: profile.uid,
+        displayName: profile.displayName,
+      });
+      // Either way the invite has served its purpose — drop it.
+      void invitationRepository.remove(profile.uid, roomId);
+      if (res.ok) {
+        router.replace(Routes.lobby(roomId));
+      } else {
+        Alert.alert(
+          'Invite expired',
+          res.reason === 'full' ? 'That room is full.' : 'That game is no longer available.',
+        );
+      }
+    } catch {
+      // The join transaction can reject (network); don't leak an uncaught rejection.
+      alertActionFailed('Could not join');
     }
   };
 

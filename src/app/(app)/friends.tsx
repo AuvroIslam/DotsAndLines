@@ -10,7 +10,7 @@ import { useAuthStore } from '@/store';
 import { spacing } from '@/theme';
 import { useThemeColors } from '@/theme/useTheme';
 import type { BoardSize } from '@/types';
-import { BOARD_VARIANTS, DEFAULT_BOARD } from '@/utils';
+import { alertActionFailed, BOARD_VARIANTS, DEFAULT_BOARD } from '@/utils';
 
 export default function FriendsScreen() {
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function FriendsScreen() {
     if (result === 'sent' || result === 'already-requested') setRequested((r) => ({ ...r, [uid]: true }));
     if (result === 'befriended') setRequested((r) => ({ ...r, [uid]: false }));
     // A user-initiated tap must not fail in silence (the store swallows the error).
-    if (result == null) Alert.alert('Could not send request', 'Please check your connection and try again.');
+    if (result == null) alertActionFailed('Could not send request');
   };
 
   const onRemove = (uid: string, name: string) => {
@@ -49,8 +49,7 @@ export default function FriendsScreen() {
         onPress: () =>
           void (async () => {
             const ok = await removeFriend(uid);
-            if (ok === false)
-              Alert.alert('Could not remove', 'Please check your connection and try again.');
+            if (ok === false) alertActionFailed('Could not remove');
           })(),
       },
     ]);
@@ -58,16 +57,22 @@ export default function FriendsScreen() {
 
   const invite = async (friendUid: string) => {
     if (!profile) return;
-    const room = await roomRepository.createRoom({
-      host: { uid: profile.uid, displayName: profile.displayName },
-      mode: 'friend',
-      boardSize: inviteBoard,
-      maxPlayers: 2,
-    });
-    // Deliver the invite so the friend actually sees it (their notification bell),
-    // then wait in the lobby for them to join.
-    await invitationRepository.send(profile, friendUid, room.id, room.code, inviteBoard);
-    router.replace(Routes.lobby(room.id));
+    try {
+      const room = await roomRepository.createRoom({
+        host: { uid: profile.uid, displayName: profile.displayName },
+        mode: 'friend',
+        boardSize: inviteBoard,
+        maxPlayers: 2,
+      });
+      // Deliver the invite so the friend actually sees it (their notification bell),
+      // then wait in the lobby for them to join. Only navigate once it's delivered.
+      await invitationRepository.send(profile, friendUid, room.id, room.code, inviteBoard);
+      router.replace(Routes.lobby(room.id));
+    } catch {
+      // A failed write must not leak an uncaught rejection; a leftover room is
+      // reaped by the stale-room sweep.
+      alertActionFailed('Could not send invite');
+    }
   };
 
   return (

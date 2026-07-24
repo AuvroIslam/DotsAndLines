@@ -83,7 +83,8 @@
       "$toUid": {
         ".read": "auth != null && auth.uid === $toUid",
         "$roomId": {
-          ".write": "auth != null && ((newData.exists() && newData.child('fromUid').val() === auth.uid) || (!newData.exists() && auth.uid === $toUid))"
+          ".write": "auth != null && ((newData.exists() && newData.child('fromUid').val() === auth.uid) || (!newData.exists() && auth.uid === $toUid))",
+          ".validate": "newData.child('roomId').val() === $roomId && newData.child('fromUid').isString() && newData.child('fromName').isString() && newData.child('code').isString() && newData.child('boardSize').isNumber() && newData.child('createdAt').isNumber()"
         }
       }
     },
