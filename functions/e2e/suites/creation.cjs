@@ -129,6 +129,59 @@ module.exports = {
       t.check('client CANNOT stamp a gameId onto a ticket', (await clientPut(`matchmaking/queue/${c.uid}/gameId`, 'anything', c)) >= 400);
     }
 
+    t.section('matchmaking: the SERVER decides the board from both tickets');
+    {
+      // Quick Match tickets are `flexible`; the board the game is actually played
+      // on is resolved server-side, never dictated by the (possibly flexible)
+      // initiator's own ticket. Set up the claim as tryMatch would, then create.
+      const ticket = (u, opts) => ({
+        uid: u.uid,
+        displayName: 'x',
+        enqueuedAt: Date.now(),
+        boardSize: 3,
+        ...opts,
+      });
+      const startMatch = async (a, aOpts, b, bOpts) => {
+        await db.ref(`matchmaking/queue/${a.uid}`).set(ticket(a, aOpts));
+        await db.ref(`matchmaking/queue/${b.uid}`).set({ ...ticket(b, bOpts), claimedBy: a.uid });
+        return callFn('createGame', { source: 'match', opponentUid: b.uid }, a);
+      };
+
+      // Flexible initiator + specific opponent → the SPECIFIC board wins, not the
+      // flexible player's placeholder.
+      {
+        const [a, b] = [await signUp(), await signUp()];
+        const made = await startMatch(a, { boardSize: 5, flexible: true }, b, { boardSize: 6 });
+        t.check('a flexible + specific pair is created', made.status === 200, JSON.stringify(made.error));
+        t.check(
+          'on the SPECIFIC board (6), not the flexible placeholder (5)',
+          (await getGame(made.result.gameId)).board.size === 6,
+        );
+      }
+
+      // Both flexible → the default board.
+      {
+        const [a, b] = [await signUp(), await signUp()];
+        const made = await startMatch(a, { boardSize: 3, flexible: true }, b, { boardSize: 4, flexible: true });
+        t.check('two flexible players are created', made.status === 200, JSON.stringify(made.error));
+        t.check('on the default board (5)', (await getGame(made.result.gameId)).board.size === 5);
+      }
+
+      // Two specific but different sizes → refused (they should never have paired).
+      {
+        const [a, b] = [await signUp(), await signUp()];
+        const made = await startMatch(a, { boardSize: 3 }, b, { boardSize: 5 });
+        t.check('two specific-but-different boards are refused', made.status >= 400);
+      }
+
+      // A board size we don't offer → refused (the server never trusts the client's size).
+      {
+        const [a, b] = [await signUp(), await signUp()];
+        const made = await startMatch(a, { boardSize: 99 }, b, { boardSize: 99 });
+        t.check('an out-of-range board size is refused', made.status >= 400);
+      }
+    }
+
     t.section('matchmaking: a claim expires, so a claimer who vanishes cannot deadlock the queue');
     {
       // The bug this guards: A claims B, then cancels/crashes before the game is

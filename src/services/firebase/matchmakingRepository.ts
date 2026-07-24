@@ -141,7 +141,10 @@ export const matchmakingRepository = {
         (t) =>
           t.uid !== me.uid &&
           !t.gameId &&
-          t.boardSize === me.boardSize &&
+          // Board compatibility: a Quick-Match (flexible) player pairs with anyone;
+          // two specific players pair only on the same size. The actual board is
+          // resolved server-side from both tickets (createGameFromMatch).
+          (me.flexible || t.flexible || t.boardSize === me.boardSize) &&
           now - t.enqueuedAt < MAX_TICKET_AGE_MS &&
           // Skip someone another player is actively pairing with; a *stale* claim
           // (claimer gone) or one we hold ourselves is fair game.

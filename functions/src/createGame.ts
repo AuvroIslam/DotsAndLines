@@ -3,7 +3,8 @@ import type { Database } from 'firebase-admin/database';
 import { GameManager } from '@/gameEngine';
 import { normalizeGame } from '@/services/firebase/rtdbSerialize';
 import { playerColors } from '@/theme/colors';
-import type { GameState, MatchmakingTicket, Player, PlayerIndex, Room } from '@/types';
+import type { BoardSize, GameState, MatchmakingTicket, Player, PlayerIndex, Room } from '@/types';
+import { BOARD_SIZES, DEFAULT_BOARD } from '@/utils/constants';
 
 /**
  * Games are built here and nowhere else.
@@ -88,6 +89,27 @@ async function commitNewGame(
   });
 }
 
+/** Board size the client sent is never trusted — it must be one we offer. */
+function isValidBoard(size: unknown): size is BoardSize {
+  return BOARD_SIZES.includes(size as BoardSize);
+}
+
+/**
+ * The board two matched tickets agree to play, chosen here so a client can't
+ * dictate it. A specific (non-flexible) ticket wins; two specific tickets must
+ * already agree (they only pair on equal size); two flexible players get the
+ * default. Null if two specific tickets somehow disagree — a pairing that should
+ * never have happened, so the caller rejects it.
+ */
+function resolveMatchBoard(a: QueuedTicket, b: QueuedTicket): BoardSize | null {
+  const aFlex = !!a.flexible;
+  const bFlex = !!b.flexible;
+  if (!aFlex && !bFlex) return a.boardSize === b.boardSize ? a.boardSize : null;
+  if (!aFlex) return a.boardSize;
+  if (!bFlex) return b.boardSize;
+  return DEFAULT_BOARD;
+}
+
 const toPlayer = (uid: string, displayName: string, index: number): Player => ({
   id: `P${index + 1}`,
   uid,
@@ -112,6 +134,7 @@ export async function createGameFromRoom(
 
   const members = Object.values(room.members ?? {}).sort((a, b) => a.index - b.index);
   if (members.length < 2) return { ok: false, reason: 'not_enough_players' };
+  if (!isValidBoard(room.boardSize)) return { ok: false, reason: 'not_allowed' }; // don't trust the client's size
 
   const gameId = roomId; // 1:1 room→game mapping keeps navigation simple
   const game = GameManager.create({
@@ -195,11 +218,16 @@ export async function createGameFromMatch(
   if (theirs.claimedBy !== uid) return { ok: false, reason: 'not_allowed' };
   if (mine.gameId || theirs.gameId) return { ok: false, reason: 'already_started' };
 
+  // The board is resolved from BOTH tickets, not the initiator's own — a flexible
+  // initiator's `boardSize` is only a placeholder — and must be one we offer.
+  const size = resolveMatchBoard(mine, theirs);
+  if (size === null || !isValidBoard(size)) return { ok: false, reason: 'not_allowed' };
+
   const gameId = `rnd_${uid}_${opponentUid}_${Date.now()}`;
   const game = GameManager.create({
     id: gameId,
     mode: 'random',
-    size: mine.boardSize,
+    size,
     players: [toPlayer(uid, mine.displayName, 0), toPlayer(opponentUid, theirs.displayName, 1)],
   });
 

@@ -52,6 +52,15 @@ describe('Board geometry', () => {
     expect(Board.totalBoxes(3)).toBe(9);
     expect(Board.totalLines(3)).toBe(24); // (3+1)*3*2
     expect(Board.totalBoxes(5)).toBe(25);
+    expect(Board.totalBoxes(6)).toBe(36); // widened board
+    expect(Board.totalLines(6)).toBe(84); // (6+1)*6*2
+  });
+
+  it.each([3, 4, 5, 6] as const)('enumerates in-bounds, unique lines for size %p', (size) => {
+    const lines = Board.getAllLines(size);
+    expect(lines).toHaveLength(Board.totalLines(size));
+    expect(new Set(lines.map(lineToKey)).size).toBe(lines.length);
+    expect(lines.every((l) => Board.isLineInBounds(l, size))).toBe(true);
   });
 
   it('enumerates every legal line exactly once', () => {

@@ -1,16 +1,21 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Screen, Typography } from '@/components/ui';
+import { Avatar, Button, Card, Screen, SegmentedControl, Typography } from '@/components/ui';
 import { useRandomMatchmaking } from '@/features/game/hooks/useRandomMatchmaking';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore } from '@/store';
 import { theme } from '@/theme';
+import type { BoardSize } from '@/types';
+import { BOARD_VARIANTS, DEFAULT_BOARD } from '@/utils';
 
 export default function HomeScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const matchmaking = useRandomMatchmaking();
+  const [pickedBoard, setPickedBoard] = useState<BoardSize>(DEFAULT_BOARD);
+  const pickedLabel = BOARD_VARIANTS.find((v) => v.size === pickedBoard)?.label ?? `${pickedBoard}×${pickedBoard}`;
 
   return (
     <Screen scroll>
@@ -25,14 +30,32 @@ export default function HomeScreen() {
       </Card>
 
       <Typography variant="h2">Play</Typography>
-      <Button
-        label={matchmaking.searching ? 'Searching for opponent…' : 'Online Match'}
-        loading={matchmaking.searching}
-        onPress={() => matchmaking.start(3)}
-      />
       {matchmaking.searching ? (
-        <Button label="Cancel search" variant="ghost" onPress={matchmaking.cancel} />
-      ) : null}
+        <>
+          <Button label="Searching for opponent…" loading disabled onPress={matchmaking.cancel} />
+          <Button label="Cancel search" variant="ghost" onPress={matchmaking.cancel} />
+        </>
+      ) : (
+        <>
+          {/* Quick Match: any board, matched with whoever's waiting. */}
+          <Button label="Quick Match" onPress={() => void matchmaking.start({ flexible: true })} />
+          <Card>
+            <Typography variant="caption" muted>
+              Or pick a board
+            </Typography>
+            <SegmentedControl
+              value={pickedBoard}
+              onChange={setPickedBoard}
+              options={BOARD_VARIANTS.map((v) => ({ label: `${v.size}×${v.size}`, value: v.size }))}
+            />
+            <Button
+              label={`Find ${pickedLabel} match`}
+              variant="secondary"
+              onPress={() => void matchmaking.start({ flexible: false, boardSize: pickedBoard })}
+            />
+          </Card>
+        </>
+      )}
       <Button
         label="Local Play"
         variant="secondary"

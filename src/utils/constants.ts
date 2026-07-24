@@ -3,8 +3,23 @@ import type { BoardSize } from '@/types';
 /** Default turn timer (ms) before a move is auto-skipped / flagged. */
 export const TURN_DURATION_MS = 30_000;
 
-/** Allowed board sizes surfaced in the UI. */
-export const BOARD_SIZES: BoardSize[] = [3, 4, 5];
+/**
+ * Allowed board sizes. The single source of truth for what the client offers and
+ * what the server will accept (see the board validation in createGame) — client
+ * and server import this same list so they can never disagree.
+ */
+export const BOARD_SIZES: BoardSize[] = [3, 4, 5, 6];
+
+/** Named board options shared by every board picker (rooms, local, online). */
+export const BOARD_VARIANTS: { size: BoardSize; label: string }[] = [
+  { size: 3, label: 'Quick 3×3' },
+  { size: 4, label: '4×4' },
+  { size: 5, label: 'Classic 5×5' },
+  { size: 6, label: 'Large 6×6' },
+];
+
+/** The board used when neither matched player asked for a specific one. */
+export const DEFAULT_BOARD: BoardSize = 5;
 
 /** Player count options per game mode. */
 export const FRIEND_PLAYER_COUNTS = [2, 3, 4] as const;

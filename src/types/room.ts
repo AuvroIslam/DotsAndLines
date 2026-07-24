@@ -38,4 +38,10 @@ export interface MatchmakingTicket {
   enqueuedAt: number;
   /** Random matchmaking is fixed to 2 players. */
   boardSize: BoardSize;
+  /**
+   * Quick Match: match any waiting opponent on any board (the server picks the
+   * agreed board). Omitted/false means a specific board — pair only with the same
+   * size, or with a flexible player. Treated as `false` when absent.
+   */
+  flexible?: boolean;
 }

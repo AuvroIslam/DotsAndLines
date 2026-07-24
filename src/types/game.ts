@@ -4,7 +4,7 @@
  * the realtime services, and the UI. No React or Firebase types belong here.
  */
 
-export type BoardSize = 3 | 4 | 5;
+export type BoardSize = 3 | 4 | 5 | 6;
 
 export type LineOrientation = 'horizontal' | 'vertical';
 

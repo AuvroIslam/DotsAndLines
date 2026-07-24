@@ -17,8 +17,8 @@ import { haptics, sound } from '@/services/feedback';
 import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { BoardSize } from '@/types';
+import { BOARD_SIZES } from '@/utils';
 
-const BOARD_SIZES: BoardSize[] = [3, 4, 5];
 const PLAYER_COLORS = ['#e74c3c', '#3498db'] as const;
 const DIFFICULTIES: { label: string; value: AIDifficulty }[] = [
   { label: 'Easy', value: 'easy' },

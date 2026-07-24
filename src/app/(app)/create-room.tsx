@@ -7,6 +7,7 @@ import { Routes } from '@/navigation/routes';
 import { roomRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import type { BoardSize } from '@/types';
+import { BOARD_VARIANTS } from '@/utils';
 
 export default function CreateRoomScreen() {
   const router = useRouter();
@@ -87,11 +88,7 @@ export default function CreateRoomScreen() {
             <SegmentedControl
               value={boardSize}
               onChange={(v) => setBoardSize(v)}
-              options={[
-                { label: '3 × 3', value: 3 },
-                { label: '4 × 4', value: 4 },
-                { label: '5 × 5', value: 5 },
-              ]}
+              options={BOARD_VARIANTS.map((v) => ({ label: `${v.size} × ${v.size}`, value: v.size }))}
             />
           </Card>
 

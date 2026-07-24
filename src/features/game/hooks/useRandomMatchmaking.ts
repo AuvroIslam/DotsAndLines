@@ -5,7 +5,16 @@ import { Routes } from '@/navigation/routes';
 import { matchmakingRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import type { BoardSize, MatchmakingTicket } from '@/types';
-import { createLogger } from '@/utils';
+import { createLogger, DEFAULT_BOARD } from '@/utils';
+
+/**
+ * What to search for. Quick Match is `{ flexible: true }` — any board, the server
+ * picks it. A specific board is `{ boardSize }` (flexible defaults false).
+ */
+export interface MatchPrefs {
+  boardSize?: BoardSize;
+  flexible?: boolean;
+}
 
 const MATCH_POLL_MS = 2_000;
 const log = createLogger('MM');
@@ -46,7 +55,7 @@ export function useRandomMatchmaking() {
   );
 
   const start = useCallback(
-    async (boardSize: BoardSize) => {
+    async (prefs: MatchPrefs = {}) => {
       if (!profile) {
         log.warn('start() ignored — no profile (are you signed in?)');
         return;
@@ -55,15 +64,20 @@ export function useRandomMatchmaking() {
         log.warn('start() ignored — already searching');
         return;
       }
+      const flexible = !!prefs.flexible;
+      // A flexible ticket still carries a boardSize, but it's only a fallback for
+      // the both-flexible case; the server never trusts it otherwise.
+      const boardSize = prefs.boardSize ?? DEFAULT_BOARD;
       navigated.current = false;
       setSearching(true);
-      log('START searching', { uid: profile.uid, boardSize });
+      log('START searching', { uid: profile.uid, boardSize, flexible });
 
       const ticket: MatchmakingTicket = {
         uid: profile.uid,
         displayName: profile.displayName,
         enqueuedAt: Date.now(),
         boardSize,
+        flexible,
       };
       await matchmakingRepository.enqueue(ticket);
 
