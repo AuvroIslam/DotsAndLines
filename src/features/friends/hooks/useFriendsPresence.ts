@@ -15,10 +15,14 @@ export function useFriendsPresence(uids: string[]): Record<string, boolean> {
 
   useEffect(() => {
     const list = key ? key.split(',') : [];
-    if (list.length === 0) {
-      setOnline({});
-      return;
-    }
+    // Drop uids no longer in the set, so a stale `online` flag can't linger (and
+    // wrongly show a re-added friend as online) or grow the map without bound.
+    setOnline((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const uid of list) if (uid in prev) next[uid] = prev[uid]!;
+      return next;
+    });
+    if (list.length === 0) return;
     const unsubs = list.map((uid) =>
       presenceRepository.subscribe(uid, (state) =>
         setOnline((prev) => ({ ...prev, [uid]: !!state?.isOnline })),

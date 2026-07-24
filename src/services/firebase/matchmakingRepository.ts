@@ -1,7 +1,7 @@
 import { get, onValue, ref, remove, runTransaction, set } from 'firebase/database';
 
 import type { BoardSize, MatchmakingTicket } from '@/types';
-import { createLogger } from '@/utils';
+import { createLogger, describeError } from '@/utils';
 
 import { realtimeDb } from './config';
 import { gameFunctions } from './gameFunctions';
@@ -51,7 +51,7 @@ export const matchmakingRepository = {
       await set(ref(realtimeDb, RtdbPaths.queueTicket(ticket.uid)), ticket);
       log('enqueued ticket', { uid: ticket.uid, boardSize: ticket.boardSize });
     } catch (e) {
-      log.error('enqueue FAILED (check RTDB rules are deployed)', describe(e));
+      log.error('enqueue FAILED (check RTDB rules are deployed)', describeError(e));
       throw e;
     }
   },
@@ -61,7 +61,7 @@ export const matchmakingRepository = {
       await remove(ref(realtimeDb, RtdbPaths.queueTicket(uid)));
       log('dequeued ticket', { uid });
     } catch (e) {
-      log.error('dequeue failed', describe(e));
+      log.error('dequeue failed', describeError(e));
     }
   },
 
@@ -95,7 +95,7 @@ export const matchmakingRepository = {
         return null; // not matched — remove the ticket, cancel wins
       });
     } catch (e) {
-      log.error('cancelSearch failed', describe(e));
+      log.error('cancelSearch failed', describeError(e));
     }
     return matchedGameId;
   },
@@ -110,7 +110,7 @@ export const matchmakingRepository = {
         log('own ticket update', { uid, gameId: ticket?.gameId ?? null, exists: snap.exists() });
         cb(ticket);
       },
-      (e) => log.error('ticket subscription error', describe(e)),
+      (e) => log.error('ticket subscription error', describeError(e)),
     );
   },
 
@@ -124,7 +124,7 @@ export const matchmakingRepository = {
       const queueSnap = await get(ref(realtimeDb, RtdbPaths.queue));
       queue = (queueSnap.val() as Record<string, QueuedTicket>) ?? {};
     } catch (e) {
-      log.error('reading queue FAILED (check RTDB rules are deployed)', describe(e));
+      log.error('reading queue FAILED (check RTDB rules are deployed)', describeError(e));
       return null;
     }
 
@@ -191,7 +191,7 @@ export const matchmakingRepository = {
       });
       committed = claim.committed;
     } catch (e) {
-      log.error('claim transaction FAILED (check RTDB rules)', describe(e));
+      log.error('claim transaction FAILED (check RTDB rules)', describeError(e));
       return null;
     }
 
@@ -213,10 +213,5 @@ export const matchmakingRepository = {
   },
 };
 
-
-function describe(e: unknown): { code?: string; message: string } {
-  const err = e as { code?: string; message?: string };
-  return { code: err?.code, message: err?.message ?? String(e) };
-}
 
 export type { BoardSize };

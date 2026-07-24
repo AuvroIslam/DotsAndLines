@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 
 import type { Friend, FriendRequest, Friendship, UserProfile } from '@/types';
-import { createLogger } from '@/utils';
+import { createLogger, describeError } from '@/utils';
 
 import { firestore } from './config';
 import { Collections } from './paths';
@@ -101,7 +101,7 @@ export const friendRepository = {
     return onSnapshot(
       q,
       (snap) => cb(snap.docs.map((d) => d.data() as FriendRequest)),
-      (e) => log.error('incoming-requests listener error (retrying)', describe(e)),
+      (e) => log.error('incoming-requests listener error (retrying)', describeError(e)),
     );
   },
 
@@ -117,7 +117,7 @@ export const friendRepository = {
     return onSnapshot(
       q,
       (snap) => cb(snap.docs.map((d) => friendView(uid, d.data() as Friendship)).filter(isFriend)),
-      (e) => log.error('friends listener error (retrying)', describe(e)),
+      (e) => log.error('friends listener error (retrying)', describeError(e)),
     );
   },
 
@@ -182,9 +182,4 @@ function friendView(me: string, f: Friendship): Friend | null {
 
 function isFriend(f: Friend | null): f is Friend {
   return f !== null;
-}
-
-function describe(e: unknown): { code?: string; message: string } {
-  const err = e as { code?: string; message?: string };
-  return { code: err?.code, message: err?.message ?? String(e) };
 }

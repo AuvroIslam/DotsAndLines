@@ -3,3 +3,4 @@ export * from './lineKey';
 export * from './id';
 export * from './logger';
 export * from './notify';
+export * from './describeError';

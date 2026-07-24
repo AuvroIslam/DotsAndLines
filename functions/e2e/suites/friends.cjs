@@ -177,6 +177,35 @@ module.exports = {
       t.check('the accepted request was cleared, not left as a phantom', !stillReq.exists());
     }
 
+    t.section('a friendship edge must live under its canonical sorted-pair id');
+    {
+      // removeFriend deletes friendships/{sorted(a,b)}; an edge written under any
+      // other key would be undeletable and yet still render in the friends list.
+      // The create rule binds the doc id to the sorted pair to preclude that.
+      const x = await clientUser();
+      const y = await clientUser();
+      // y asks x, so x is entitled to create the edge.
+      await setDoc(doc(y.fs, 'friendRequests', `${y.uid}_${x.uid}`), {
+        id: `${y.uid}_${x.uid}`, fromUid: y.uid, toUid: x.uid,
+        fromDisplayName: 'Y', fromUsername: 'y', fromPhotoURL: null,
+        status: 'pending', createdAt: Date.now(),
+      });
+      const edge = {
+        users: [x.uid, y.uid].sort(),
+        profiles: {},
+        createdAt: Date.now(),
+      };
+
+      t.check(
+        'a mis-keyed edge (id not the sorted pair) is refused',
+        !(await ok(setDoc(doc(x.fs, 'friendships', `zzz_${x.uid}`), edge))),
+      );
+      t.check(
+        'the canonical-key edge is accepted',
+        await ok(setDoc(doc(x.fs, 'friendships', pairId(x.uid, y.uid)), edge)),
+      );
+    }
+
     t.section('you cannot send a friend request to yourself');
     {
       t.check(

@@ -47,6 +47,11 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.users.size() == 2
         && request.auth.uid in request.resource.data.users
+        // The doc id MUST be the canonical sorted pair, so an edge can never be
+        // written under a key removeFriend (which derives the same id) can't find —
+        // which would strand an undeletable, permanently-listed "friend".
+        && request.resource.data.users[0] < request.resource.data.users[1]
+        && pairId == request.resource.data.users[0] + '_' + request.resource.data.users[1]
         && exists(/databases/$(database)/documents/friendRequests/$(otherMember() + '_' + request.auth.uid));
       // Deleting a missing edge is a harmless no-op; allow it (resource == null) so
       // an unfriend that races the listener doesn't throw a permissions error.

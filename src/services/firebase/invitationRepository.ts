@@ -1,7 +1,7 @@
 import { onValue, ref, remove, update } from 'firebase/database';
 
 import type { BoardSize, GameInvite, UserProfile } from '@/types';
-import { createLogger } from '@/utils';
+import { createLogger, describeError } from '@/utils';
 
 import { realtimeDb } from './config';
 import { RtdbPaths } from './paths';
@@ -49,7 +49,7 @@ export const invitationRepository = {
         const val = (snap.val() as Record<string, GameInvite> | null) ?? {};
         cb(Object.values(val));
       },
-      (e) => log.error('invites listener error (retrying)', describe(e)),
+      (e) => log.error('invites listener error (retrying)', describeError(e)),
     );
   },
 
@@ -58,12 +58,7 @@ export const invitationRepository = {
     try {
       await remove(ref(realtimeDb, RtdbPaths.gameInvite(uid, roomId)));
     } catch (e) {
-      log.error('invite remove failed', describe(e));
+      log.error('invite remove failed', describeError(e));
     }
   },
 };
-
-function describe(e: unknown): { code?: string; message: string } {
-  const err = e as { code?: string; message?: string };
-  return { code: err?.code, message: err?.message ?? String(e) };
-}

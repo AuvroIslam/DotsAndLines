@@ -443,12 +443,14 @@ module.exports = {
       );
     }
 
-    t.section('game invites: only the inviter may send, only the recipient may clear');
+    t.section('game invites: only a room’s host may send, only the recipient may clear');
     {
-      // A game invite is a per-recipient record another user drops in your inbox.
-      // The rules must let the inviter deliver it, stop anyone forging a different
-      // sender, and let only the recipient clear their own.
+      // A game invite is a per-recipient record dropped in your inbox. The rules
+      // must let the room's host deliver it, stop a forged sender, stop inviting to
+      // a room you don't own, bind the roomId to the key, and let only the
+      // recipient clear their own.
       const [inviter, invitee, stranger] = [await signUp(), await signUp(), await signUp()];
+      await seedRoom('inv-room', [inviter], 5); // inviter hosts the room the invite points at
       const invite = {
         roomId: 'inv-room',
         code: 'INV123',
@@ -459,27 +461,40 @@ module.exports = {
       };
 
       t.check(
-        'the inviter may deliver an invite stamped with their own uid',
+        'the room’s host may deliver an invite to it',
         (await clientPut(`gameInvites/${invitee.uid}/inv-room`, invite, inviter)) < 400,
       );
       t.check(
         'an invite forging a different sender is refused',
         (await clientPut(
-          `gameInvites/${invitee.uid}/spoof`,
-          { ...invite, roomId: 'spoof', fromUid: stranger.uid },
+          `gameInvites/${invitee.uid}/inv-room`,
+          { ...invite, fromUid: stranger.uid },
           inviter,
         )) >= 400,
       );
+
+      // Owned by someone else: even a well-formed invite for it is refused.
+      await seedRoom('inv-notmine', [stranger], 5);
+      t.check(
+        'you cannot deliver an invite for a room you do not host',
+        (await clientPut(
+          `gameInvites/${invitee.uid}/inv-notmine`,
+          { ...invite, roomId: 'inv-notmine' },
+          inviter,
+        )) >= 400,
+      );
+
+      // Host a second room so the write rule passes and only validate can reject.
+      await seedRoom('inv-key', [inviter], 5);
       t.check(
         'an invite whose roomId does not match its key is refused',
-        // The record would send the recipient to a different room than the key —
-        // validate binds the body's roomId to the key to stop that.
         (await clientPut(
-          `gameInvites/${invitee.uid}/mismatch`,
+          `gameInvites/${invitee.uid}/inv-key`,
           { ...invite, roomId: 'somewhere-else' },
           inviter,
         )) >= 400,
       );
+
       t.check(
         'a third party cannot clear someone else’s invite',
         (await clientPut(`gameInvites/${invitee.uid}/inv-room`, null, stranger)) >= 400,
@@ -491,6 +506,38 @@ module.exports = {
       t.check(
         'the dismissed invite is gone',
         (await db.ref(`gameInvites/${invitee.uid}/inv-room`).get()).val() === null,
+      );
+    }
+
+    t.section('staleRooms: only a room’s host/members may touch its cleanup timer');
+    {
+      // The cleanup due-index must not be tamperable by outsiders — deleting an
+      // entry would leak the room and its reserved code; pushing it out would
+      // defer cleanup forever.
+      const [host, outsider] = [await signUp(), await signUp()];
+      await seedRoom('sr-room', [host], 3);
+      const soon = Date.now() + 60_000;
+
+      t.check(
+        'the host may arm their room’s cleanup timer',
+        (await clientPut('staleRooms/sr-room', soon, host)) < 400,
+      );
+      t.check(
+        'an outsider cannot overwrite it',
+        (await clientPut('staleRooms/sr-room', soon + 999_999, outsider)) >= 400,
+      );
+      t.check(
+        'an outsider cannot delete it while the room exists',
+        (await clientPut('staleRooms/sr-room', null, outsider)) >= 400,
+      );
+      t.check(
+        'the host may delete it',
+        (await clientPut('staleRooms/sr-room', null, host)) < 400,
+      );
+      // Clearing the stale entry of a room that's already gone is harmless cleanup.
+      t.check(
+        'anyone may clear a stale entry for a room that no longer exists',
+        (await clientPut('staleRooms/sr-gone', null, outsider)) < 400,
       );
     }
 
