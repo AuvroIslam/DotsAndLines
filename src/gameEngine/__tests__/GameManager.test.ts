@@ -56,6 +56,34 @@ describe('GameManager', () => {
     }
   });
 
+  it('resets the turn clock on a box-completion extra turn, not only on a turn change', () => {
+    // Regression: the bonus move after a box used to keep the *previous* move's
+    // clock, so a chain raced a shrinking timer. Every move now starts fresh.
+    let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2), now: 1_000 });
+    const apply = (
+      line: { orientation: 'horizontal' | 'vertical'; row: number; col: number },
+      p: string,
+      now: number,
+    ) => {
+      const out = GameManager.applyMove(g, line, p, now);
+      if (out.ok) g = out.state;
+      return out;
+    };
+    apply({ orientation: 'horizontal', row: 0, col: 0 }, 'P1', 2_000);
+    apply({ orientation: 'horizontal', row: 3, col: 0 }, 'P2', 2_100);
+    apply({ orientation: 'horizontal', row: 1, col: 0 }, 'P1', 2_200);
+    apply({ orientation: 'horizontal', row: 3, col: 1 }, 'P2', 2_300);
+    apply({ orientation: 'vertical', row: 0, col: 0 }, 'P1', 2_400);
+    apply({ orientation: 'horizontal', row: 3, col: 2 }, 'P2', 2_500);
+    const closing = apply({ orientation: 'vertical', row: 0, col: 1 }, 'P1', 9_999); // closes box (0,0)
+    expect(closing.ok).toBe(true);
+    if (closing.ok) {
+      expect(closing.result.extraTurn).toBe(true);
+      expect(closing.state.currentTurn).toBe('P1'); // same player goes again…
+      expect(closing.state.turnStartedAt).toBe(9_999); // …on a fresh clock
+    }
+  });
+
   it('finishes and resolves a winner when the board fills (1x1)', () => {
     // 1 is not a valid BoardSize for the UI, but the engine is size-agnostic;
     // use the smallest fully-playable case via a 3x3 played to completion is heavy,
@@ -246,9 +274,14 @@ describe('GameManager', () => {
         expect(g.phase).toBe('playing');
         expect(g.players.P1?.consecutiveMisses).toBe(miss);
 
-        const out = GameManager.applyMove(g, lines[li++]!, 'P2'); // P2 plays on
-        if (out.ok) g = out.state;
+        // P2 answers — their normal move plus the anti-stall bonus move — which
+        // returns play to P1 for the next miss.
+        while (g.currentTurn === 'P2') {
+          const out = GameManager.applyMove(g, lines[li++]!, 'P2');
+          if (out.ok) g = out.state;
+        }
         expect(g.players.P2?.consecutiveMisses).toBe(0);
+        expect(g.currentTurn).toBe('P1');
       }
 
       g = GameManager.timeoutTurn(g); // P1's final miss
@@ -262,19 +295,25 @@ describe('GameManager', () => {
     it('playing again resets the streak, so an interrupted player is never eliminated', () => {
       let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
       const lines = Board.getAllLines(3);
+      let li = 0;
+      // P2 plays out their turn (normal + bonus move) until play returns to P1.
+      const drainP2 = () => {
+        while (g.currentTurn === 'P2') {
+          const out = GameManager.applyMove(g, lines[li++]!, 'P2');
+          if (out.ok) g = out.state;
+        }
+      };
 
       // P1 misses twice (one short of elimination) across two rounds...
       g = GameManager.timeoutTurn(g);
-      let out = GameManager.applyMove(g, lines[0]!, 'P2');
-      if (out.ok) g = out.state;
+      drainP2();
       g = GameManager.timeoutTurn(g);
       expect(g.players.P1?.consecutiveMisses).toBe(2);
 
-      out = GameManager.applyMove(g, lines[1]!, 'P2');
-      if (out.ok) g = out.state;
+      drainP2();
 
       // ...then comes back and plays: the streak is wiped.
-      out = GameManager.applyMove(g, lines[2]!, 'P1');
+      const out = GameManager.applyMove(g, lines[li++]!, 'P1');
       expect(out.ok).toBe(true);
       if (out.ok) g = out.state;
       expect(g.players.P1?.consecutiveMisses).toBe(0);
@@ -312,6 +351,65 @@ describe('GameManager', () => {
       const g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
       const finished = GameManager.forfeit(g, 'P1');
       expect(GameManager.timeoutTurn(finished)).toBe(finished);
+    });
+  });
+
+  describe('timeout bonus move (anti-stall)', () => {
+    it('gives the opponent one bonus move, spent by a no-box move — two moves total', () => {
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const lines = Board.getAllLines(3); // the first few draws complete no box
+
+      g = GameManager.timeoutTurn(g); // P1 lets the clock run out
+      expect(g.currentTurn).toBe('P2');
+      expect(g.pendingBonusMoves).toBe(1);
+
+      // P2's normal move completes no box: they keep the turn and spend the bonus.
+      let out = GameManager.applyMove(g, lines[0]!, 'P2');
+      expect(out.ok).toBe(true);
+      if (out.ok) {
+        g = out.state;
+        expect(out.result.extraTurn).toBe(true);
+      }
+      expect(g.currentTurn).toBe('P2');
+      expect(g.pendingBonusMoves).toBe(0);
+
+      // P2's bonus move (no box): now play passes back to P1.
+      out = GameManager.applyMove(g, lines[1]!, 'P2');
+      if (out.ok) g = out.state;
+      expect(g.currentTurn).toBe('P1');
+      expect(g.pendingBonusMoves).toBe(0);
+    });
+
+    it('grants nothing on the eliminating miss', () => {
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 5, players: players(4) });
+      for (let i = 0; i < MAX_CONSECUTIVE_MISSES; i += 1) {
+        while (g.currentTurn !== 'P1') g = GameManager.skipTurn(g);
+        g = GameManager.timeoutTurn(g);
+      }
+      expect(g.players.P1?.isEliminated).toBe(true);
+      expect(g.phase).toBe('playing');
+      expect(g.pendingBonusMoves ?? 0).toBe(0);
+    });
+
+    it('finishes a completed board even when the mover still had a bonus owed (no soft-lock)', () => {
+      let g = GameManager.create({ id: 'g', mode: 'friend', size: 3, players: players(2) });
+      const allLines = Board.getAllLines(3);
+      // Draw every line but the last.
+      for (let i = 0; i < allLines.length - 1; i += 1) {
+        const out = GameManager.applyMove(g, allLines[i]!, g.currentTurn);
+        if (out.ok) g = out.state;
+      }
+      expect(g.phase).toBe('playing');
+
+      // As if an opponent had just timed out, the mover is owed a bonus move.
+      g = { ...g, pendingBonusMoves: 1 };
+      const closing = GameManager.applyMove(g, allLines[allLines.length - 1]!, g.currentTurn);
+      expect(closing.ok).toBe(true);
+      if (closing.ok) {
+        // Board full ⇒ finished, regardless of the owed bonus.
+        expect(closing.state.phase).toBe('finished');
+        expect(closing.state.result).not.toBeNull();
+      }
     });
   });
 });

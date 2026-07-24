@@ -204,14 +204,18 @@ export default function GameScreen() {
 
   const handleExitFinished = () => router.replace(Routes.home);
 
+  // An opponent's timeout grants the active player a bonus move — surface it so
+  // both sides understand why one player moves twice in a row.
+  const bonusActive = game.phase === 'playing' && (game.pendingBonusMoves ?? 0) > 0;
+  const bonusSuffix = bonusActive ? ' · Bonus move' : '';
   const turnLabel =
     game.phase === 'finished'
       ? 'Game over'
       : iAmEliminated
         ? 'You left — watching'
         : isMyTurn
-          ? 'Your turn'
-          : `${currentPlayer?.displayName ?? 'Opponent'}'s turn`;
+          ? `Your turn${bonusSuffix}`
+          : `${currentPlayer?.displayName ?? 'Opponent'}'s turn${bonusSuffix}`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

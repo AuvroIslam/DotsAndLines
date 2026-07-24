@@ -9,11 +9,19 @@ describe('TurnManager', () => {
   });
 
   it('keeps the turn on box completion', () => {
-    expect(TurnManager.resolveTurn(order, 'P2', 1)).toEqual({ nextTurn: 'P2', extraTurn: true });
+    expect(TurnManager.resolveTurn(order, 'P2', 1)).toEqual({
+      nextTurn: 'P2',
+      extraTurn: true,
+      pendingBonusMoves: 0,
+    });
   });
 
   it('advances the turn with no completion', () => {
-    expect(TurnManager.resolveTurn(order, 'P2', 0)).toEqual({ nextTurn: 'P3', extraTurn: false });
+    expect(TurnManager.resolveTurn(order, 'P2', 0)).toEqual({
+      nextTurn: 'P3',
+      extraTurn: false,
+      pendingBonusMoves: 0,
+    });
   });
 
   it('is resilient to an unknown current player', () => {
@@ -44,6 +52,35 @@ describe('TurnManager', () => {
     expect(TurnManager.resolveTurn(order, 'P1', 0, ['P1', 'P3'])).toEqual({
       nextTurn: 'P3',
       extraTurn: false,
+      pendingBonusMoves: 0,
+    });
+  });
+
+  describe('resolveTurn with an owed bonus move (anti-stall)', () => {
+    const pair = ['P1', 'P2'];
+
+    it('carries the bonus through a box completion (box rule takes precedence)', () => {
+      expect(TurnManager.resolveTurn(pair, 'P1', 1, pair, 1)).toEqual({
+        nextTurn: 'P1',
+        extraTurn: true,
+        pendingBonusMoves: 1,
+      });
+    });
+
+    it('spends one bonus and keeps the turn on a no-box move', () => {
+      expect(TurnManager.resolveTurn(pair, 'P1', 0, pair, 1)).toEqual({
+        nextTurn: 'P1',
+        extraTurn: true,
+        pendingBonusMoves: 0,
+      });
+    });
+
+    it('passes play on once the bonus is spent', () => {
+      expect(TurnManager.resolveTurn(pair, 'P1', 0, pair, 0)).toEqual({
+        nextTurn: 'P2',
+        extraTurn: false,
+        pendingBonusMoves: 0,
+      });
     });
   });
 });

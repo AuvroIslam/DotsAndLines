@@ -27,17 +27,34 @@ export class TurnManager {
 
   /**
    * Resolve whose turn it is after a move.
+   *
+   * Two ways to keep the turn, checked in order:
+   *  1. the move completed a box — the normal "go again" rule; any owed bonus is
+   *     left untouched, to be spent once the chain ends;
+   *  2. no box, but the player is owed a bonus move from an opponent's timeout —
+   *     keep the turn and spend one.
+   * Otherwise play passes to the next active player.
+   *
    * @param boxesCompleted number of boxes the move completed
+   * @param pendingBonus   extra moves owed to `current` (see `pendingBonusMoves`)
    */
   static resolveTurn(
     turnOrder: PlayerId[],
     current: PlayerId,
     boxesCompleted: number,
     activeIds: PlayerId[] = turnOrder,
-  ): { nextTurn: PlayerId; extraTurn: boolean } {
+    pendingBonus = 0,
+  ): { nextTurn: PlayerId; extraTurn: boolean; pendingBonusMoves: number } {
     if (boxesCompleted > 0) {
-      return { nextTurn: current, extraTurn: true };
+      return { nextTurn: current, extraTurn: true, pendingBonusMoves: pendingBonus };
     }
-    return { nextTurn: TurnManager.next(turnOrder, current, activeIds), extraTurn: false };
+    if (pendingBonus > 0) {
+      return { nextTurn: current, extraTurn: true, pendingBonusMoves: pendingBonus - 1 };
+    }
+    return {
+      nextTurn: TurnManager.next(turnOrder, current, activeIds),
+      extraTurn: false,
+      pendingBonusMoves: 0,
+    };
   }
 }

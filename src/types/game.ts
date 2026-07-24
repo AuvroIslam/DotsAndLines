@@ -149,6 +149,15 @@ export interface GameState {
   currentTurn: PlayerId;
   turnStartedAt: number;
   turnDurationMs: number;
+  /**
+   * Extra moves owed to the current player because an opponent let their turn
+   * clock run out. Letting the clock expire hands your move to the opponent, so
+   * they play their normal turn plus one bonus move — which removes any incentive
+   * to stall for a favourable chain parity in the endgame. Consumed by a move
+   * that completes no box (a box already grants "go again"), so it is carried
+   * across a box chain and spent when the chain ends. Absent/0 in normal play.
+   */
+  pendingBonusMoves?: number;
   createdAt: number;
   updatedAt: number;
   result: GameResult | null;

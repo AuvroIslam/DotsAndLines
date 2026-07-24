@@ -8,7 +8,7 @@ import type {
   Player,
   PlayerId,
 } from '@/types';
-import { MAX_CONSECUTIVE_MISSES, TURN_DURATION_MS } from '@/utils/constants';
+import { MAX_CONSECUTIVE_MISSES, TIMEOUT_PENALTY_MOVES, TURN_DURATION_MS } from '@/utils/constants';
 
 import { Board } from './Board';
 import { MoveValidator, type MoveRejectionReason, type ValidationResult } from './MoveValidator';
@@ -57,6 +57,7 @@ export class GameManager {
       currentTurn: turnOrder[0]!,
       turnStartedAt: now,
       turnDurationMs: params.turnDurationMs ?? TURN_DURATION_MS,
+      pendingBonusMoves: 0,
       createdAt: now,
       updatedAt: now,
       result: null,
@@ -83,11 +84,12 @@ export class GameManager {
     }
 
     const { board, completedBoxes } = Board.applyLine(state.board, line, playerId);
-    const { nextTurn, extraTurn } = TurnManager.resolveTurn(
+    const { nextTurn, extraTurn, pendingBonusMoves } = TurnManager.resolveTurn(
       state.turnOrder,
       playerId,
       completedBoxes.length,
       GameManager.activePlayerIds(state.turnOrder, state.players),
+      state.pendingBonusMoves ?? 0,
     );
 
     const scores = ScoreManager.computeScores(board, state.turnOrder);
@@ -104,20 +106,22 @@ export class GameManager {
       };
     }
 
+    // Every move starts a fresh timer window — including a bonus move after a
+    // completed box, so a player mid-chain isn't racing the previous move's clock.
     let next: GameState = {
       ...state,
       board,
       players,
       currentTurn: nextTurn,
-      turnStartedAt: extraTurn ? state.turnStartedAt : now,
+      turnStartedAt: now,
+      pendingBonusMoves,
       updatedAt: now,
     };
 
+    // A full board ends the game no matter whose turn the rotation resolved to, or
+    // how many bonus moves were still owed — the leftover bonus is simply inert.
     if (WinChecker.isGameOver(next)) {
       next = { ...next, phase: 'finished', result: WinChecker.getResult(next) };
-    } else {
-      // A fresh timer window starts whenever the active player changes.
-      if (!extraTurn) next = { ...next, turnStartedAt: now };
     }
 
     const result: MoveResult = { line, completedBoxes, extraTurn };
@@ -134,7 +138,9 @@ export class GameManager {
       state.currentTurn,
       GameManager.activePlayerIds(state.turnOrder, state.players),
     );
-    return { ...state, currentTurn: nextTurn, turnStartedAt: now, updatedAt: now };
+    // Passing the turn clears any bonus the outgoing player still owed; the new
+    // player starts clean (a timeout re-grants one on top — see `timeoutTurn`).
+    return { ...state, currentTurn: nextTurn, turnStartedAt: now, pendingBonusMoves: 0, updatedAt: now };
   }
 
   static isGameOver(state: GameState): boolean {
@@ -173,9 +179,17 @@ export class GameManager {
       players: { ...state.players, [playerId]: { ...player, consecutiveMisses: misses } },
     };
 
-    return misses >= MAX_CONSECUTIVE_MISSES
-      ? GameManager.eliminate(withMiss, playerId, now, 'timeout')
-      : GameManager.skipTurn(withMiss, now);
+    if (misses >= MAX_CONSECUTIVE_MISSES) {
+      // The eliminating miss ends (or thins) the game; no bonus is granted.
+      return GameManager.eliminate(withMiss, playerId, now, 'timeout');
+    }
+
+    // A missed turn forfeits the move to the opponent: whoever receives the turn
+    // plays their normal move plus a bonus, so stalling never pays. Only when the
+    // turn actually moved to someone else.
+    const passed = GameManager.skipTurn(withMiss, now);
+    if (passed.currentTurn === playerId) return passed;
+    return { ...passed, pendingBonusMoves: TIMEOUT_PENALTY_MOVES };
   }
 
   /**
@@ -238,6 +252,8 @@ export class GameManager {
         ? TurnManager.next(state.turnOrder, playerId, remaining)
         : state.currentTurn,
       turnStartedAt: wasTheirTurn ? now : state.turnStartedAt,
+      // A turn handed on by an elimination or forfeit carries no bonus.
+      pendingBonusMoves: wasTheirTurn ? 0 : state.pendingBonusMoves,
       updatedAt: now,
     };
   }

@@ -40,6 +40,35 @@ module.exports = {
       t.check('one miss does NOT eliminate them', g.players.P1.isEliminated === false);
       t.check('the match is still live', g.phase === 'playing');
       t.check('play passed to the opponent', g.currentTurn === 'P2');
+      t.check('the opponent is owed a bonus move (anti-stall)', g.pendingBonusMoves === 1, String(g.pendingBonusMoves));
+    }
+
+    t.section('a missed turn gives the opponent two moves — normal turn plus one bonus');
+    {
+      // The anti-stall rule end-to-end through the server: a timeout forfeits the
+      // move to the opponent, who plays their normal move AND one bonus move
+      // (spent on a no-box move) before play returns. Removes any reason to stall
+      // for a favourable chain parity in the endgame.
+      const [a, b] = [await signUp(), await signUp()];
+      await seedGame('dbonus', [a, b], 3, { turnStartedAt: Date.now() - TURN_MS - 1_000 });
+
+      await callFn('requestTurnTimeout', { gameId: 'dbonus' }, b); // P1 times out
+      let g = await getGame('dbonus');
+      t.check('P2 holds the turn with a bonus owed', g.currentTurn === 'P2' && g.pendingBonusMoves === 1);
+
+      // First (normal) move completes no box → P2 keeps the turn, spends the bonus.
+      const r1 = await playMove('dbonus', firstFreeLine(g), b);
+      t.check('P2’s normal move is accepted', r1.ok, JSON.stringify(r1.result ?? r1.error));
+      g = await getGame('dbonus');
+      t.check('P2 keeps the turn for the bonus move', g.currentTurn === 'P2', g.currentTurn);
+      t.check('the bonus is now spent', (g.pendingBonusMoves ?? 0) === 0, String(g.pendingBonusMoves));
+
+      // The bonus move passes play back to P1.
+      const r2 = await playMove('dbonus', firstFreeLine(g), b);
+      t.check('P2’s bonus move is accepted', r2.ok);
+      g = await getGame('dbonus');
+      t.check('play returns to P1 after the two moves', g.currentTurn === 'P1', g.currentTurn);
+      t.check('no bonus lingers', (g.pendingBonusMoves ?? 0) === 0, String(g.pendingBonusMoves));
     }
 
     t.section('coming back resets the streak — a phone call costs nothing');

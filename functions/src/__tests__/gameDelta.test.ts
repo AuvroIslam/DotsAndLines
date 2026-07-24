@@ -119,11 +119,31 @@ describe('diffGamePaths', () => {
     expect(updates[`games/${GAME_ID}/players/P1/consecutiveMisses`]).toBe(1);
   });
 
+  it('is lossless across the timeout bonus lifecycle (grant then spend)', () => {
+    // Grant: P1 times out, so P2 is owed a bonus move.
+    const prev = newGame();
+    const granted = GameManager.timeoutTurn(prev, prev.turnStartedAt + 30_000);
+    expect(granted.currentTurn).toBe('P2');
+    expect(granted.pendingBonusMoves).toBe(1);
+    let updates = expectLossless(prev, granted);
+    expect(updates[`games/${GAME_ID}/pendingBonusMoves`]).toBe(1);
+
+    // Spend: P2 plays a no-box move, so the owed bonus drops back to 0.
+    const grantedV = { ...granted, version: prev.version + 1 };
+    const spent = move(grantedV, { orientation: 'horizontal', row: 0, col: 0 }, 'P2');
+    expect(spent.pendingBonusMoves).toBe(0);
+    updates = expectLossless(grantedV, spent);
+    expect(updates[`games/${GAME_ID}/pendingBonusMoves`]).toBe(0);
+  });
+
   it('is lossless for an elimination + terminal result', () => {
     let prev = newGame();
+    const lines = Board.getAllLines(3);
+    let li = 0;
     for (let i = 0; i < MAX_CONSECUTIVE_MISSES - 1; i += 1) {
       prev = GameManager.timeoutTurn(prev, prev.turnStartedAt + 30_000);
-      prev = move(prev, Board.getAllLines(3)[i]!, 'P2'); // P2 keeps playing
+      // P2 plays their normal + bonus move, returning the turn to P1.
+      while (prev.currentTurn === 'P2') prev = move(prev, lines[li++]!, 'P2');
     }
     const next = GameManager.timeoutTurn(prev, prev.turnStartedAt + 30_000);
     expect(next.phase).toBe('finished');

@@ -39,6 +39,16 @@ export const ROOM_CODE_LENGTH = 6;
  */
 export const MAX_CONSECUTIVE_MISSES = 3;
 
+/**
+ * Extra moves handed to the opponent when a player lets their turn clock run out.
+ * A missed turn forfeits your move to the opponent, who then plays their normal
+ * turn plus this many bonus moves. It exists to kill the incentive to stall — a
+ * player can't gain a favourable chain parity by intentionally timing out, since
+ * doing so just gives the opponent more tempo, not less. See
+ * `GameManager.timeoutTurn`.
+ */
+export const TIMEOUT_PENALTY_MOVES = 1;
+
 /** Network / reconnect tuning. */
 export const RECONNECT_BASE_DELAY_MS = 1_000;
 export const PRESENCE_HEARTBEAT_MS = 4_000;

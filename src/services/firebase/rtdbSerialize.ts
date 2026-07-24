@@ -81,6 +81,9 @@ export function normalizeGame(raw: GameState | null | undefined): GameState | nu
     // must default to a number or the server's compare-and-swap would compare
     // against `undefined` and never match.
     version: raw.version ?? 0,
+    // RTDB omits a 0/absent value; default it so the engine's `> 0` bonus checks
+    // never see `undefined`.
+    pendingBonusMoves: raw.pendingBonusMoves ?? 0,
     board: normalizeBoard(raw.board, raw.board?.size ?? 3),
     players: normalizePlayers(raw.players),
     turnOrder: raw.turnOrder ?? [],

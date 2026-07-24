@@ -34,6 +34,9 @@ export function diffGamePaths(
   if (next.turnStartedAt !== prev.turnStartedAt) {
     updates[`${root}/turnStartedAt`] = next.turnStartedAt;
   }
+  if ((next.pendingBonusMoves ?? 0) !== (prev.pendingBonusMoves ?? 0)) {
+    updates[`${root}/pendingBonusMoves`] = next.pendingBonusMoves ?? 0;
+  }
   if (next.updatedAt !== prev.updatedAt) updates[`${root}/updatedAt`] = next.updatedAt;
 
   // The result is only ever written once, at the end, and is small — send it whole.
