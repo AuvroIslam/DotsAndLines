@@ -43,7 +43,16 @@ export default function FriendsScreen() {
   const onRemove = (uid: string, name: string) => {
     Alert.alert('Remove friend?', `Remove ${name} from your friends?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void removeFriend(uid) },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () =>
+          void (async () => {
+            const ok = await removeFriend(uid);
+            if (ok === false)
+              Alert.alert('Could not remove', 'Please check your connection and try again.');
+          })(),
+      },
     ]);
   };
 

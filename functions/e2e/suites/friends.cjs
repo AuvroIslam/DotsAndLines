@@ -17,6 +17,7 @@ const {
   query,
   where,
   getDocs,
+  writeBatch,
 } = require('firebase/firestore');
 const { getAuth, connectAuthEmulator, signInAnonymously } = require('firebase/auth');
 
@@ -135,6 +136,45 @@ module.exports = {
           where('status', '==', 'pending'),
         )))),
       );
+    }
+
+    t.section('accepting a request is one atomic batch — even with no reverse request');
+    {
+      // The real acceptRequest() batch: create the edge AND delete both the
+      // accepted request and its reverse. The reverse almost never exists, and
+      // deleting a MISSING doc under a resource.data delete rule is denied — which
+      // rejected the whole batch, so accept threw "Missing or insufficient
+      // permissions", no edge was created, and the "friend" stayed a request.
+      const g = await clientUser();
+      const h = await clientUser();
+      // H asks G. G never asked H, so the reverse request G_H does NOT exist.
+      await setDoc(doc(h.fs, 'friendRequests', `${h.uid}_${g.uid}`), {
+        id: `${h.uid}_${g.uid}`, fromUid: h.uid, toUid: g.uid,
+        fromDisplayName: 'H', fromUsername: 'h', fromPhotoURL: null,
+        status: 'pending', createdAt: Date.now(),
+      });
+
+      const batch = writeBatch(g.fs);
+      batch.set(doc(g.fs, 'friendships', pairId(g.uid, h.uid)), {
+        users: [g.uid, h.uid].sort(),
+        profiles: {
+          [h.uid]: { displayName: 'H', username: 'h', photoURL: null },
+          [g.uid]: { displayName: 'G', username: 'g', photoURL: null },
+        },
+        createdAt: Date.now(),
+      });
+      batch.delete(doc(g.fs, 'friendRequests', `${h.uid}_${g.uid}`)); // the accepted one
+      batch.delete(doc(g.fs, 'friendRequests', `${g.uid}_${h.uid}`)); // reverse — MISSING
+
+      t.check('the whole accept batch commits', await ok(batch.commit()));
+      t.check(
+        'the friendship edge was created',
+        await ok(getDoc(doc(g.fs, 'friendships', pairId(g.uid, h.uid))).then((s) => {
+          if (!s.exists()) throw new Error('edge missing');
+        })),
+      );
+      const stillReq = await getDoc(doc(g.fs, 'friendRequests', `${h.uid}_${g.uid}`));
+      t.check('the accepted request was cleared, not left as a phantom', !stillReq.exists());
     }
 
     t.section('you cannot send a friend request to yourself');

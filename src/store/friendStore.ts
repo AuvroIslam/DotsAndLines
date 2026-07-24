@@ -15,9 +15,11 @@ interface FriendStoreState {
   subscribe: (uid: string) => () => void;
   search: (prefix: string, selfUid: string) => Promise<void>;
   sendRequest: (from: UserProfile, toUid: string) => Promise<SendResult | null>;
-  acceptRequest: (request: FriendRequest, self: UserProfile) => Promise<void>;
-  declineRequest: (requestId: string) => Promise<void>;
-  removeFriend: (selfUid: string, friendUid: string) => Promise<void>;
+  /** These resolve to `false` (never throw) if the write is refused, so a `void`
+   *  call site can't leak an uncaught rejection. */
+  acceptRequest: (request: FriendRequest, self: UserProfile) => Promise<boolean>;
+  declineRequest: (requestId: string) => Promise<boolean>;
+  removeFriend: (selfUid: string, friendUid: string) => Promise<boolean>;
 }
 
 export const useFriendStore = create<FriendStoreState>((set) => ({
@@ -62,15 +64,33 @@ export const useFriendStore = create<FriendStoreState>((set) => ({
   },
 
   acceptRequest: async (request, self) => {
-    await friendRepository.acceptRequest(request, self);
+    try {
+      await friendRepository.acceptRequest(request, self);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 
   declineRequest: async (requestId) => {
-    await friendRepository.declineRequest(requestId);
+    try {
+      await friendRepository.declineRequest(requestId);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 
   removeFriend: async (selfUid, friendUid) => {
-    await friendRepository.removeFriend(selfUid, friendUid);
+    try {
+      await friendRepository.removeFriend(selfUid, friendUid);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 }));
 

@@ -48,7 +48,10 @@ service cloud.firestore {
         && request.resource.data.users.size() == 2
         && request.auth.uid in request.resource.data.users
         && exists(/databases/$(database)/documents/friendRequests/$(otherMember() + '_' + request.auth.uid));
-      allow delete: if isSignedIn() && request.auth.uid in resource.data.users;
+      // Deleting a missing edge is a harmless no-op; allow it (resource == null) so
+      // an unfriend that races the listener doesn't throw a permissions error.
+      allow delete: if isSignedIn()
+        && (resource == null || request.auth.uid in resource.data.users);
       allow update: if false;
     }
 
@@ -101,8 +104,14 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.fromUid == request.auth.uid
         && request.resource.data.toUid != request.auth.uid;
+      // Sender or recipient may delete. `resource == null` matters because
+      // acceptRequest deletes BOTH the request and its (usually non-existent)
+      // reverse in one atomic batch — without this, deleting the missing reverse
+      // is denied and the whole accept (friendship create included) is rejected.
       allow delete: if isSignedIn() &&
-        (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+        (resource == null
+         || resource.data.fromUid == request.auth.uid
+         || resource.data.toUid == request.auth.uid);
       allow update: if false;
     }
 
