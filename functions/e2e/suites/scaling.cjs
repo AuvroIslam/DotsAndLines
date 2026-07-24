@@ -442,5 +442,74 @@ module.exports = {
         gone === 'gone' && (await db.ref('staleRooms/cg-missing').get()).val() === null,
       );
     }
+
+    t.section('game invites: only the inviter may send, only the recipient may clear');
+    {
+      // A game invite is a per-recipient record another user drops in your inbox.
+      // The rules must let the inviter deliver it, stop anyone forging a different
+      // sender, and let only the recipient clear their own.
+      const [inviter, invitee, stranger] = [await signUp(), await signUp(), await signUp()];
+      const invite = {
+        roomId: 'inv-room',
+        code: 'INV123',
+        fromUid: inviter.uid,
+        fromName: 'Inviter',
+        boardSize: 5,
+        createdAt: Date.now(),
+      };
+
+      t.check(
+        'the inviter may deliver an invite stamped with their own uid',
+        (await clientPut(`gameInvites/${invitee.uid}/inv-room`, invite, inviter)) < 400,
+      );
+      t.check(
+        'an invite forging a different sender is refused',
+        (await clientPut(
+          `gameInvites/${invitee.uid}/spoof`,
+          { ...invite, roomId: 'spoof', fromUid: stranger.uid },
+          inviter,
+        )) >= 400,
+      );
+      t.check(
+        'a third party cannot clear someone else’s invite',
+        (await clientPut(`gameInvites/${invitee.uid}/inv-room`, null, stranger)) >= 400,
+      );
+      t.check(
+        'the recipient may dismiss their own invite',
+        (await clientPut(`gameInvites/${invitee.uid}/inv-room`, null, invitee)) < 400,
+      );
+      t.check(
+        'the dismissed invite is gone',
+        (await db.ref(`gameInvites/${invitee.uid}/inv-room`).get()).val() === null,
+      );
+    }
+
+    t.section('sweeping a room clears the invites it delivered');
+    {
+      // An invite shares its room's lifecycle: when the sweep deletes the room it
+      // must also clear every invite that room sent, or the recipient's bell keeps
+      // an entry pointing at a game that no longer exists.
+      const [host, guest] = [await signUp(), await signUp()];
+      await seedRoom('inv-sweep', [host], 3);
+      await db.ref('rooms/inv-sweep/invitedUids').set({ [guest.uid]: true });
+      await db.ref(`gameInvites/${guest.uid}/inv-sweep`).set({
+        roomId: 'inv-sweep',
+        code: 'INVSWP',
+        fromUid: host.uid,
+        fromName: 'Host',
+        boardSize: 3,
+        createdAt: Date.now(),
+      });
+      // The game started → the room and the invites it delivered are dead weight.
+      await db.ref('rooms/inv-sweep/gameId').set('inv-sweep-game');
+      await db.ref('staleRooms/inv-sweep').set(Date.now() - 1000);
+
+      const outcome = await createGame.sweepStaleRoom(db, 'inv-sweep', Date.now());
+      t.check('the started room is deleted', outcome === 'deleted', outcome);
+      t.check(
+        'the invite it delivered is cleared, not orphaned',
+        (await db.ref(`gameInvites/${guest.uid}/inv-sweep`).get()).val() === null,
+      );
+    }
   },
 };

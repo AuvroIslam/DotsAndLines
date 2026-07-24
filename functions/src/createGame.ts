@@ -178,11 +178,17 @@ export async function sweepStaleRoom(
   const started = !!room.gameId || room.status !== 'open';
   const idleFor = now - (room.updatedAt ?? room.createdAt ?? 0);
   if (started || idleFor > ROOM_IDLE_MAX_MS) {
-    await db.ref().update({
+    const updates: Record<string, unknown> = {
       [`rooms/${roomId}`]: null,
       [`roomCodes/${room.code}`]: null,
       [`staleRooms/${roomId}`]: null,
-    });
+    };
+    // Clear any invites this room delivered so a swept room leaves no orphan
+    // notification in an invitee's bell.
+    for (const uid of Object.keys(room.invitedUids ?? {})) {
+      updates[`gameInvites/${uid}/${roomId}`] = null;
+    }
+    await db.ref().update(updates);
     return 'deleted';
   }
 

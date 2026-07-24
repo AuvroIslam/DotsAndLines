@@ -10,6 +10,7 @@ export { callable } from './callable';
 export type { CallResult, CallErrorCode } from './callable';
 export { serverNow, clockSkewMs } from './serverTime';
 export { roomRepository } from './roomRepository';
+export { invitationRepository } from './invitationRepository';
 export { matchmakingRepository } from './matchmakingRepository';
 export { presenceRepository } from './presenceRepository';
 export type { PresenceState } from './presenceRepository';

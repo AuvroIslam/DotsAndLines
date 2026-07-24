@@ -2,8 +2,10 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Screen, SegmentedControl, Typography } from '@/components/ui';
+import { Avatar, Badge, Button, Card, Screen, SegmentedControl, Typography } from '@/components/ui';
+import { useFriends } from '@/features/friends';
 import { useRandomMatchmaking } from '@/features/game/hooks/useRandomMatchmaking';
+import { useGameInvites } from '@/features/notifications';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore } from '@/store';
 import { theme } from '@/theme';
@@ -14,20 +16,33 @@ export default function HomeScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const matchmaking = useRandomMatchmaking();
+  const { incomingRequests } = useFriends();
+  const { count: inviteCount } = useGameInvites();
   const [pickedBoard, setPickedBoard] = useState<BoardSize>(DEFAULT_BOARD);
   const pickedLabel = BOARD_VARIANTS.find((v) => v.size === pickedBoard)?.label ?? `${pickedBoard}×${pickedBoard}`;
 
   return (
     <Screen scroll>
-      <Card onPress={() => router.push(Routes.profile)} style={styles.profileCard}>
-        <Avatar name={profile?.displayName ?? 'Player'} uri={profile?.photoURL} size={52} />
-        <View style={styles.profileText}>
-          <Typography variant="h3">{profile?.displayName ?? 'Player'}</Typography>
-          <Typography variant="caption" muted>
-            @{profile?.username ?? '—'}
-          </Typography>
+      <View style={styles.topRow}>
+        <Card onPress={() => router.push(Routes.profile)} style={styles.profileCard}>
+          <Avatar name={profile?.displayName ?? 'Player'} uri={profile?.photoURL} size={52} />
+          <View style={styles.profileText}>
+            <Typography variant="h3">{profile?.displayName ?? 'Player'}</Typography>
+            <Typography variant="caption" muted>
+              @{profile?.username ?? '—'}
+            </Typography>
+          </View>
+        </Card>
+        <View>
+          <Button
+            label="🔔"
+            variant="secondary"
+            style={styles.bell}
+            onPress={() => router.push(Routes.notifications)}
+          />
+          <Badge count={inviteCount} floating />
         </View>
-      </Card>
+      </View>
 
       <Typography variant="h2">Play</Typography>
       {matchmaking.searching ? (
@@ -77,12 +92,15 @@ export default function HomeScreen() {
           style={styles.gridItem}
           onPress={() => router.push(Routes.friends)}
         />
-        <Button
-          label="Requests"
-          variant="secondary"
-          style={styles.gridItem}
-          onPress={() => router.push(Routes.friendRequests)}
-        />
+        <View style={styles.gridItem}>
+          <Button
+            label="Requests"
+            variant="secondary"
+            style={styles.fill}
+            onPress={() => router.push(Routes.friendRequests)}
+          />
+          <Badge count={incomingRequests.length} floating />
+        </View>
         <Button
           label="History"
           variant="secondary"
@@ -103,9 +121,12 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  profileCard: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  profileCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   profileText: { flex: 1 },
+  bell: { height: 52, width: 52, paddingHorizontal: 0 },
   sectionTop: { marginTop: theme.spacing.md },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md },
   gridItem: { flexBasis: '47%', flexGrow: 1 },
+  fill: { width: '100%' },
 });

@@ -79,6 +79,15 @@
       }
     },
 
+    "gameInvites": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid === $toUid",
+        "$roomId": {
+          ".write": "auth != null && ((newData.exists() && newData.child('fromUid').val() === auth.uid) || (!newData.exists() && auth.uid === $toUid))"
+        }
+      }
+    },
+
     "matchmaking": {
       "queue": {
         ".read": "auth != null",

@@ -120,6 +120,11 @@ export const roomRepository = {
     );
   },
 
+  async getRoom(roomId: string): Promise<Room | null> {
+    const snap = await get(ref(realtimeDb, RtdbPaths.room(roomId)));
+    return snap.val() as Room | null;
+  },
+
   async setReady(roomId: string, uid: string, isReady: boolean): Promise<void> {
     await update(ref(realtimeDb, RtdbPaths.roomMember(roomId, uid)), { isReady });
   },

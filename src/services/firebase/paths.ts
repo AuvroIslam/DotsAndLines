@@ -43,6 +43,9 @@ export const RtdbPaths = {
   roomCodeIndex: (code: string) => `roomCodes/${code}`,
   /** Due-index for room cleanup: when the sweep should next consider deleting a room. */
   staleRoom: (roomId: string) => `staleRooms/${roomId}`,
+  /** Per-recipient game invitations. The invitee reads their own; the inviter writes one. */
+  gameInvites: (uid: string) => `gameInvites/${uid}`,
+  gameInvite: (uid: string, roomId: string) => `gameInvites/${uid}/${roomId}`,
   queue: 'matchmaking/queue',
   queueTicket: (uid: string) => `matchmaking/queue/${uid}`,
   presence: (uid: string) => `presence/${uid}`,

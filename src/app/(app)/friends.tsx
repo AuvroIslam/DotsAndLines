@@ -2,13 +2,15 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, EmptyState, Screen, TextField, Typography } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, Screen, SegmentedControl, TextField, Typography } from '@/components/ui';
 import { useFriends, useFriendsPresence } from '@/features/friends';
 import { Routes } from '@/navigation/routes';
-import { roomRepository } from '@/services/firebase';
+import { invitationRepository, roomRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import { spacing } from '@/theme';
 import { useThemeColors } from '@/theme/useTheme';
+import type { BoardSize } from '@/types';
+import { BOARD_VARIANTS, DEFAULT_BOARD } from '@/utils';
 
 export default function FriendsScreen() {
   const router = useRouter();
@@ -18,6 +20,8 @@ export default function FriendsScreen() {
   // Rows we've just sent a request to, so the button reflects it without a
   // separate outgoing-requests listener.
   const [requested, setRequested] = useState<Record<string, boolean>>({});
+  // Board an invite creates its room on (the inviter is the host, so they choose).
+  const [inviteBoard, setInviteBoard] = useState<BoardSize>(DEFAULT_BOARD);
   const colors = useThemeColors();
 
   const friendUids = new Set(friends.map((f) => f.uid));
@@ -41,16 +45,17 @@ export default function FriendsScreen() {
     ]);
   };
 
-  const invite = async (friendUid: string, friendName: string) => {
+  const invite = async (friendUid: string) => {
     if (!profile) return;
     const room = await roomRepository.createRoom({
       host: { uid: profile.uid, displayName: profile.displayName },
       mode: 'friend',
-      boardSize: 3,
+      boardSize: inviteBoard,
       maxPlayers: 2,
     });
-    // Friend receives the code (and, with FCM wired, a push) to join the lobby.
-    void friendName;
+    // Deliver the invite so the friend actually sees it (their notification bell),
+    // then wait in the lobby for them to join.
+    await invitationRepository.send(profile, friendUid, room.id, room.code, inviteBoard);
     router.replace(Routes.lobby(room.id));
   };
 
@@ -97,6 +102,18 @@ export default function FriendsScreen() {
       <Typography variant="h3" style={styles.section}>
         Friends
       </Typography>
+      {friends.length > 0 ? (
+        <Card>
+          <Typography variant="caption" muted>
+            Invite board
+          </Typography>
+          <SegmentedControl
+            value={inviteBoard}
+            onChange={setInviteBoard}
+            options={BOARD_VARIANTS.map((v) => ({ label: `${v.size}×${v.size}`, value: v.size }))}
+          />
+        </Card>
+      ) : null}
       <FlatList
         data={friends}
         keyExtractor={(f) => f.uid}
@@ -128,7 +145,7 @@ export default function FriendsScreen() {
             </View>
             <Button
               label="Invite"
-              onPress={() => void invite(item.uid, item.displayName)}
+              onPress={() => void invite(item.uid)}
               style={styles.smallBtn}
             />
             <Button

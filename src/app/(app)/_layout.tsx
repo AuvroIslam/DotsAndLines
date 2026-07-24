@@ -29,6 +29,7 @@ export default function AppLayout() {
       <Stack.Screen name="home" options={{ headerShown: false }} />
       <Stack.Screen name="friends" options={{ title: 'Friends' }} />
       <Stack.Screen name="friend-requests" options={{ title: 'Friend Requests' }} />
+      <Stack.Screen name="notifications" options={{ title: 'Invites' }} />
       <Stack.Screen name="create-room" options={{ title: 'Custom Room' }} />
       <Stack.Screen name="lobby/[roomId]" options={{ title: 'Lobby' }} />
       <Stack.Screen name="game/[gameId]" options={{ headerShown: false, gestureEnabled: false }} />
