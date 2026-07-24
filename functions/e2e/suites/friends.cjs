@@ -13,6 +13,10 @@ const {
   setDoc,
   getDoc,
   deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
 } = require('firebase/firestore');
 const { getAuth, connectAuthEmulator, signInAnonymously } = require('firebase/auth');
 
@@ -83,6 +87,54 @@ module.exports = {
 
       t.check('a non-member CANNOT delete it', !(await ok(deleteDoc(doc(c.fs, 'friendships', pairId(a.uid, b.uid))))));
       t.check('a member CAN unfriend (delete the edge)', await ok(deleteDoc(doc(a.fs, 'friendships', pairId(a.uid, b.uid)))));
+    }
+
+    t.section('sending a request can read the docs it must probe before writing');
+    {
+      // sendRequest() reads friendships/{pair}, friendRequests/{reverse} and
+      // friendRequests/{forward} BEFORE it writes — and all three are usually
+      // MISSING. A read rule that dereferences resource.data DENIES a get on a
+      // missing doc, so these probes threw permission-denied and "Add friend"
+      // silently did nothing. The get rules must permit a missing-doc read.
+      const d = await clientUser();
+      const e = await clientUser();
+      t.check(
+        'a get on a missing friendships edge is allowed',
+        await ok(getDoc(doc(d.fs, 'friendships', pairId(d.uid, e.uid)))),
+      );
+      t.check(
+        'a get on a missing reverse request is allowed',
+        await ok(getDoc(doc(d.fs, 'friendRequests', `${e.uid}_${d.uid}`))),
+      );
+      t.check(
+        'a get on a missing forward request is allowed',
+        await ok(getDoc(doc(d.fs, 'friendRequests', `${d.uid}_${e.uid}`))),
+      );
+      t.check(
+        'and then the request itself writes',
+        await ok(setDoc(doc(d.fs, 'friendRequests', `${d.uid}_${e.uid}`), {
+          id: `${d.uid}_${e.uid}`, fromUid: d.uid, toUid: e.uid,
+          fromDisplayName: 'D', fromUsername: 'd', fromPhotoURL: null,
+          status: 'pending', createdAt: Date.now(),
+        })),
+      );
+      // The recipient's incoming list still works; a stranger cannot borrow it.
+      t.check(
+        'the recipient can list their incoming requests',
+        await ok(getDocs(query(
+          collection(e.fs, 'friendRequests'),
+          where('toUid', '==', e.uid),
+          where('status', '==', 'pending'),
+        ))),
+      );
+      t.check(
+        'a stranger cannot list someone else’s incoming requests',
+        !(await ok(getDocs(query(
+          collection(d.fs, 'friendRequests'),
+          where('toUid', '==', e.uid),
+          where('status', '==', 'pending'),
+        )))),
+      );
     }
 
     t.section('you cannot send a friend request to yourself');

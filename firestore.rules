@@ -37,7 +37,13 @@ service cloud.firestore {
           ? request.resource.data.users[1]
           : request.resource.data.users[0];
       }
-      allow read: if isSignedIn() && request.auth.uid in resource.data.users;
+      // `get` allows an existence check on a doc that isn't there yet — sendRequest
+      // reads this pair before writing. A rule that dereferences resource.data
+      // DENIES a get on a missing doc, so guard with `resource == null`.
+      allow get: if isSignedIn()
+        && (resource == null || request.auth.uid in resource.data.users);
+      // `list` backs the array-contains friends query; matched docs always exist.
+      allow list: if isSignedIn() && request.auth.uid in resource.data.users;
       allow create: if isSignedIn()
         && request.resource.data.users.size() == 2
         && request.auth.uid in request.resource.data.users
@@ -82,8 +88,15 @@ service cloud.firestore {
 
     // Friend requests: visible to sender and recipient; the recipient resolves them.
     match /friendRequests/{requestId} {
-      allow read: if isSignedIn() &&
-        (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      // `get` allows sender and recipient to read one request — and to check a
+      // request that doesn't exist yet (sendRequest probes the reverse/forward
+      // ids before writing), which a resource.data rule would otherwise deny.
+      allow get: if isSignedIn()
+        && (resource == null
+            || resource.data.fromUid == request.auth.uid
+            || resource.data.toUid == request.auth.uid);
+      // `list` backs only the recipient's incoming-requests query.
+      allow list: if isSignedIn() && resource.data.toUid == request.auth.uid;
       // The sender creates it, and it may not be a request to yourself.
       allow create: if isSignedIn()
         && request.resource.data.fromUid == request.auth.uid

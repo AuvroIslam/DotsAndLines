@@ -36,6 +36,8 @@ export default function FriendsScreen() {
     const result = await sendRequest(uid);
     if (result === 'sent' || result === 'already-requested') setRequested((r) => ({ ...r, [uid]: true }));
     if (result === 'befriended') setRequested((r) => ({ ...r, [uid]: false }));
+    // A user-initiated tap must not fail in silence (the store swallows the error).
+    if (result == null) Alert.alert('Could not send request', 'Please check your connection and try again.');
   };
 
   const onRemove = (uid: string, name: string) => {
