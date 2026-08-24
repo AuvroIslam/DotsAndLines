@@ -10,3 +10,4 @@ export { ScoreManager } from './ScoreManager';
 export { WinChecker } from './WinChecker';
 export { GameManager } from './GameManager';
 export type { CreateGameParams, ApplyMoveOutcome } from './GameManager';
+export { PresenceChecker } from './PresenceChecker';

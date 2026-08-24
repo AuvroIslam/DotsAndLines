@@ -1,19 +1,8 @@
 import { Board } from '@/gameEngine';
-import type { BoardSize, GameState, Line, Player } from '@/types';
+import { players } from '@/testUtils/players';
+import type { BoardSize, GameState, Line } from '@/types';
 
 import { chooseMoveAI } from '../ai';
-
-function players(n: number): Player[] {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `P${i + 1}`,
-    uid: `uid${i + 1}`,
-    index: i as Player['index'],
-    displayName: `Player ${i + 1}`,
-    color: '#fff',
-    isConnected: true,
-    score: 0,
-  }));
-}
 
 function buildState(size: BoardSize, drawnLines: Line[]): GameState {
   let board = Board.create(size);
@@ -21,6 +10,7 @@ function buildState(size: BoardSize, drawnLines: Line[]): GameState {
   const ps = players(2);
   return {
     id: 'test',
+    version: 0,
     mode: 'friend',
     phase: 'playing',
     board,

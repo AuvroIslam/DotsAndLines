@@ -1,31 +1,28 @@
-import { get, onValue, ref, remove, runTransaction, serverTimestamp, set } from 'firebase/database';
+import { get, onValue, ref, serverTimestamp, update } from 'firebase/database';
 
-import { GameManager } from '@/gameEngine';
-import type { GameState, Line, PlayerId } from '@/types';
+import type { GamePresence, GameState, PlayerId } from '@/types';
 
 import { realtimeDb } from './config';
+import { trackRefConnection } from './connectionTracking';
 import { RtdbPaths } from './paths';
-import { normalizeGame } from './rtdbSerialize';
+import { normalizeGame, normalizePresence } from './rtdbSerialize';
 
-export type ApplyMoveResult =
-  { ok: true; state: GameState } | { ok: false; reason: 'rejected' | 'not_found' };
 
 /**
- * Authoritative game state lives in Realtime Database. Moves are applied through
- * a transaction that re-runs the *same pure engine* the client uses optimistically,
- * so the server is the single source of truth and illegal/raced moves are rejected
- * atomically (only one of two simultaneous edits to the same line can win).
+ * Read-side access to a game, plus presence.
+ *
+ * Clients cannot write game state at all — not a move, not a result, not even
+ * the game itself: security rules deny `games/*` outright, and creation is a
+ * server call. Every change goes through a Cloud Function, so the board, the
+ * scores, the turn order and the clock cannot be forged. See `gameFunctions`.
+ *
+ * Two things deliberately live outside the game node:
+ *  - presence (`gamePresence/…`), because heartbeats would otherwise rewrite the
+ *    game every few seconds and push a snapshot to every subscriber;
+ *  - the turn-deadline index (`activeGames/…`), so the server can find overdue
+ *    games without reading every live one.
  */
 export const gameRepository = {
-  async createGame(state: GameState): Promise<void> {
-    // Membership index lets RTDB security rules authorize writers by uid
-    // without iterating the players map.
-    const memberUids: Record<string, boolean> = {};
-    for (const p of Object.values(state.players)) memberUids[p.uid] = true;
-    await set(ref(realtimeDb, `gameMembers/${state.id}`), memberUids);
-    await set(ref(realtimeDb, RtdbPaths.game(state.id)), state);
-  },
-
   async getGame(gameId: string): Promise<GameState | null> {
     const snap = await get(ref(realtimeDb, RtdbPaths.game(gameId)));
     return normalizeGame(snap.val() as GameState | null);
@@ -33,56 +30,58 @@ export const gameRepository = {
 
   subscribe(gameId: string, cb: (state: GameState | null) => void): () => void {
     const node = ref(realtimeDb, RtdbPaths.game(gameId));
-    const unsub = onValue(node, (snap) => cb(normalizeGame(snap.val() as GameState | null)));
-    return unsub;
+    return onValue(node, (snap) => cb(normalizeGame(snap.val() as GameState | null)));
   },
 
-  async applyMove(gameId: string, line: Line, playerId: PlayerId): Promise<ApplyMoveResult> {
-    const node = ref(realtimeDb, RtdbPaths.game(gameId));
-    const now = Date.now();
-
-    const tx = await runTransaction(node, (current: GameState | null) => {
-      const state = normalizeGame(current);
-      if (!state) return current; // abort: nothing to play on
-      const outcome = GameManager.applyMove(state, line, playerId, now);
-      if (!outcome.ok) return; // abort transaction (undefined) on illegal move
-      return outcome.state;
+  /**
+   * Watch the live games this player is a member of. The server writes an entry
+   * atomically with each game it creates and clears it when the game ends, so a
+   * client can never be told it's in a game that doesn't exist. Drives the
+   * active-game watcher, which routes a player into a match made while they were
+   * on another screen (a cancelled search, a backgrounded app, a cold start).
+   */
+  subscribeActiveGames(uid: string, cb: (gameIds: string[]) => void): () => void {
+    const node = ref(realtimeDb, RtdbPaths.userActiveGames(uid));
+    return onValue(node, (snap) => {
+      const val = (snap.val() as Record<string, boolean> | null) ?? {};
+      cb(Object.keys(val));
     });
-
-    if (!tx.committed) {
-      const exists = (await get(node)).exists();
-      return { ok: false, reason: exists ? 'rejected' : 'not_found' };
-    }
-    return { ok: true, state: normalizeGame(tx.snapshot.val() as GameState)! };
   },
 
-  /** Advance the turn when the timer expires (validated against the current turn). */
-  async skipTurn(gameId: string, expectedTurn: PlayerId): Promise<boolean> {
-    const node = ref(realtimeDb, RtdbPaths.game(gameId));
-    const now = Date.now();
-    const tx = await runTransaction(node, (current: GameState | null) => {
-      const state = normalizeGame(current);
-      if (!state || state.phase !== 'playing') return current;
-      if (state.currentTurn !== expectedTurn) return current; // already moved on
-      return GameManager.skipTurn(state, now);
-    });
-    return tx.committed;
+  /**
+   * Presence is watched separately from the game so the high-churn heartbeat
+   * stream never invalidates the game subscription.
+   */
+  subscribePresence(gameId: string, cb: (presence: GamePresence) => void): () => void {
+    const node = ref(realtimeDb, RtdbPaths.gamePresence(gameId));
+    return onValue(node, (snap) => cb(normalizePresence(snap.val() as GamePresence | null)));
   },
 
-  /** Mark a player's connection state (used by reconnect / presence in-game). */
-  async setPlayerConnection(
-    gameId: string,
-    playerId: PlayerId,
-    isConnected: boolean,
-  ): Promise<void> {
-    await set(
-      ref(realtimeDb, `${RtdbPaths.game(gameId)}/players/${playerId}/isConnected`),
-      isConnected,
+  /**
+   * Track this client's connection for one player within one game, using
+   * `.info/connected` + `onDisconnect` so a graceful disconnect (app kill) is
+   * reflected server-side with no client action needed. Writes to the separate
+   * presence node, so none of this touches game state. Returns a teardown for a
+   * graceful unmount.
+   */
+  trackConnection(gameId: string, playerId: PlayerId): () => void {
+    const node = ref(realtimeDb, RtdbPaths.gamePlayerPresence(gameId, playerId));
+    return trackRefConnection(
+      node,
+      { isConnected: true, disconnectedAt: null, lastSeenAt: serverTimestamp() },
+      { isConnected: false, disconnectedAt: serverTimestamp() },
     );
-    await set(ref(realtimeDb, `${RtdbPaths.game(gameId)}/updatedAt`), serverTimestamp());
   },
 
-  async deleteGame(gameId: string): Promise<void> {
-    await remove(ref(realtimeDb, RtdbPaths.game(gameId)));
+  /**
+   * Refresh this player's heartbeat. `onDisconnect` alone can take a long time
+   * to notice a silent network loss (no graceful close for the server to react
+   * to), so peers judge presence by how stale this timestamp is instead.
+   */
+  async heartbeat(gameId: string, playerId: PlayerId): Promise<void> {
+    await update(ref(realtimeDb, RtdbPaths.gamePlayerPresence(gameId, playerId)), {
+      lastSeenAt: serverTimestamp(),
+    });
   },
+
 };

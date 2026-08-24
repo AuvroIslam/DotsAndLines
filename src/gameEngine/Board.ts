@@ -42,8 +42,25 @@ export class Board {
     return size * size;
   }
 
+  /**
+   * Coordinates index dots on a grid — they are not measurements. A fractional
+   * (or NaN/Infinite) coordinate names no edge and no box, so it must never be
+   * treated as geometry.
+   *
+   * This is load-bearing, not defensive noise. Without it a fractional line is
+   * "in bounds", hashes to a key no real line occupies, and is therefore a legal
+   * move: four of them close a box that doesn't exist, which scores a real point
+   * and counts toward the board being full. Because the server validates with
+   * this same engine, it agrees — so the entire server-authoritative guarantee
+   * collapses on a `0.5`.
+   */
+  private static isDotIndex(n: number): boolean {
+    return Number.isInteger(n);
+  }
+
   static isLineInBounds(line: Line, size: BoardSize): boolean {
     const { orientation, row, col } = line;
+    if (!Board.isDotIndex(row) || !Board.isDotIndex(col)) return false;
     if (row < 0 || col < 0) return false;
     if (orientation === 'horizontal') {
       // rows 0..size, cols 0..size-1
@@ -81,7 +98,19 @@ export class Board {
             { row, col: col - 1 }, // box to the left
             { row, col }, // box to the right
           ];
-    return candidates.filter((b) => b.row >= 0 && b.col >= 0 && b.row < size && b.col < size);
+    // Guard integrality here too, not just in `isLineInBounds`. `applyLine` is
+    // documented as unvalidated ("call MoveValidator first"), so the only way a
+    // phantom box can never be minted — even by a caller that skips validation —
+    // is for the geometry itself to refuse to name one.
+    return candidates.filter(
+      (b) =>
+        Board.isDotIndex(b.row) &&
+        Board.isDotIndex(b.col) &&
+        b.row >= 0 &&
+        b.col >= 0 &&
+        b.row < size &&
+        b.col < size,
+    );
   }
 
   static isBoxComplete(state: BoardState, box: Box): boolean {

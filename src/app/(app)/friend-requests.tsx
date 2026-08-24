@@ -2,10 +2,23 @@ import { StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, Card, EmptyState, Screen, Typography } from '@/components/ui';
 import { useFriends } from '@/features/friends';
+import type { FriendRequest } from '@/types';
 import { theme } from '@/theme';
+import { alertActionFailed } from '@/utils';
 
 export default function FriendRequestsScreen() {
   const { profile, incomingRequests, acceptRequest, declineRequest } = useFriends();
+
+  const onAccept = async (req: FriendRequest) => {
+    if (!profile) return;
+    const ok = await acceptRequest(req, profile);
+    if (!ok) alertActionFailed('Could not accept');
+  };
+
+  const onDecline = async (req: FriendRequest) => {
+    const ok = await declineRequest(req.id);
+    if (!ok) alertActionFailed('Could not decline');
+  };
 
   if (incomingRequests.length === 0) {
     return (
@@ -29,13 +42,13 @@ export default function FriendRequestsScreen() {
           <Button
             label="Accept"
             style={styles.smallBtn}
-            onPress={() => profile && void acceptRequest(req, profile)}
+            onPress={() => void onAccept(req)}
           />
           <Button
             label="Decline"
             variant="secondary"
             style={styles.smallBtn}
-            onPress={() => void declineRequest(req.id)}
+            onPress={() => void onDecline(req)}
           />
         </Card>
       ))}

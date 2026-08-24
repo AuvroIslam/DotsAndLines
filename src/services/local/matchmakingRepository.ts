@@ -64,7 +64,8 @@ function buildPlayer(ticket: MatchmakingTicket, index: 0 | 1): Player {
     index,
     displayName: ticket.displayName,
     color: playerColors[index]!,
-    isConnected: true,
+    isEliminated: false,
+    consecutiveMisses: 0,
     score: 0,
   };
 }

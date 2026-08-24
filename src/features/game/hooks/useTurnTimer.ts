@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { gameRepository } from '@/services/firebase';
+import { gameFunctions, serverNow } from '@/services/firebase';
 import type { GameState } from '@/types';
 
 /**
- * Derives the live countdown for the active turn and auto-skips when it expires.
- * Only the *current* player's client issues the skip (guarded server-side by an
- * expected-turn check), so the timer can't be raced by every connected client.
+ * Derives the live countdown for the active turn and asks the server to apply
+ * the timeout once it expires.
+ *
+ * *Any* player may make that request — not just whoever's turn it is. That's the
+ * whole point: when the active player is the one who dropped, they are precisely
+ * the client who can't ask, so their opponent has to be able to, or the game
+ * would sit forever waiting on someone who isn't there. It's safe to open up
+ * because the server re-checks the deadline against its own clock, so no client
+ * can rush the timer; the worst a spurious call can do is nothing.
  */
-export function useTurnTimer(game: GameState | null, isMyTurn: boolean) {
+export function useTurnTimer(game: GameState | null) {
   const [remainingMs, setRemainingMs] = useState(0);
-  const skipFired = useRef<string | null>(null);
+  const timeoutFired = useRef<string | null>(null);
 
   useEffect(() => {
     if (!game || game.phase !== 'playing') {
@@ -21,18 +27,27 @@ export function useTurnTimer(game: GameState | null, isMyTurn: boolean) {
     const turnKey = `${game.currentTurn}:${game.turnStartedAt}`;
 
     const tick = () => {
-      const remaining = Math.max(0, deadline - Date.now());
+      // `deadline` is a server timestamp, so it must be compared against server
+      // time — a skewed device clock would otherwise show every turn as already
+      // expired, or never expiring at all.
+      const remaining = Math.max(0, deadline - serverNow());
       setRemainingMs(remaining);
-      if (remaining === 0 && isMyTurn && skipFired.current !== turnKey) {
-        skipFired.current = turnKey;
-        void gameRepository.skipTurn(game.id, game.currentTurn);
+      if (remaining === 0 && timeoutFired.current !== turnKey) {
+        timeoutFired.current = turnKey;
+        void gameFunctions.timeoutTurn(game.id).then((res) => {
+          // Clear the guard if the request didn't land, so the next tick retries.
+          // Leaving it set would strand the turn: if the *absent* player is the
+          // one on the clock, no other client will ask, and the game would sit
+          // there until the once-a-minute sweep happened to notice.
+          if (!res.ok && timeoutFired.current === turnKey) timeoutFired.current = null;
+        });
       }
     };
 
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [game, isMyTurn]);
+  }, [game]);
 
   const totalMs = game?.turnDurationMs ?? 1;
   return { remainingMs, fraction: Math.max(0, Math.min(1, remainingMs / totalMs)) };

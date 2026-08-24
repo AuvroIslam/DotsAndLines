@@ -12,36 +12,75 @@ interface GameOverlayProps {
   myPlayerId: string | null;
   onExit: () => void;
   onRematch?: () => void;
+  /** This player has asked for a rematch and is waiting on the others. */
+  iOfferedRematch?: boolean;
+  /** Someone else has asked for a rematch and is waiting on this player. */
+  othersOfferedRematch?: boolean;
+  /** We're waiting, but a player who still needs to agree has left — no rematch is coming. */
+  rematchStalled?: boolean;
+  /** Retract a standing rematch offer, so a waiting player is never trapped. */
+  onCancelRematch?: () => void;
 }
 
 /** Winner / draw screen shown when the game finishes. */
-export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlayProps) {
+export function GameOverlay({
+  game,
+  myPlayerId,
+  onExit,
+  onRematch,
+  iOfferedRematch,
+  othersOfferedRematch,
+  rematchStalled,
+  onCancelRematch,
+}: GameOverlayProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const result = game.result;
   if (!result) return null;
 
   const iWon = !!myPlayerId && result.winners.includes(myPlayerId);
+  const isForfeit = result.reason === 'forfeit';
+  const isTimeout = result.reason === 'timeout';
+  // Nobody left playing — the match is void rather than won by whoever happened
+  // to run out of turns second.
+  const isNoContest = result.winners.length === 0;
   const winnerLabel = result.winners.map((id) => game.players[id]?.displayName).filter(Boolean).join(', ');
-  const title = result.isDraw
-    ? "It's a Draw!"
-    : myPlayerId === null
-      ? `${winnerLabel} Wins!`
-      : iWon
-        ? 'You Win! 🎉'
-        : 'You Lose';
+
+  const title = isNoContest
+    ? 'No Contest'
+    : result.isDraw
+      ? "It's a Draw!"
+      : myPlayerId === null
+        ? `${winnerLabel} Wins!`
+        : iWon
+          ? isForfeit
+            ? 'Opponent Forfeited — You Win!'
+            : isTimeout
+              ? 'Opponent Ran Out of Turns — You Win!'
+              : 'You Win! 🎉'
+          : isForfeit
+            ? 'You Forfeited'
+            : isTimeout
+              ? 'You Missed Too Many Turns'
+              : 'You Lose';
+
+  const subtitle = isNoContest
+    ? 'Both players stopped playing, so the match was voided.'
+    : !result.isDraw
+      ? `Winner: ${winnerLabel}`
+      : null;
   return (
     <Animated.View entering={FadeIn.duration(250)} style={styles.backdrop}>
       <View style={styles.card}>
         <Typography variant="h1" center>
-          {result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
+          {isNoContest ? '🚫' : result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
         </Typography>
         <Typography variant="h2" center>
           {title}
         </Typography>
-        {!result.isDraw ? (
+        {subtitle ? (
           <Typography variant="body" muted center>
-            Winner: {winnerLabel}
+            {subtitle}
           </Typography>
         ) : null}
 
@@ -61,7 +100,27 @@ export function GameOverlay({ game, myPlayerId, onExit, onRematch }: GameOverlay
           })}
         </View>
 
-        {onRematch ? <Button label="Rematch" onPress={onRematch} /> : null}
+        {onRematch ? (
+          iOfferedRematch ? (
+            rematchStalled ? (
+              // The player we're waiting on has left — no rematch is coming. Say
+              // so plainly instead of spinning forever; Back to Home is below.
+              <Typography variant="body" muted center>
+                Opponent left — no rematch
+              </Typography>
+            ) : (
+              // We've asked; nothing starts until they do. Keep the button live as
+              // a way *out* of the wait — a disabled "Waiting…" trapped a player
+              // whose opponent had simply left, with no way to take the offer back.
+              <Button label="Waiting for opponent — tap to cancel" onPress={onCancelRematch ?? onExit} />
+            )
+          ) : (
+            <Button
+              label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}
+              onPress={onRematch}
+            />
+          )
+        ) : null}
         <Button label="Back to Home" variant="secondary" onPress={onExit} />
       </View>
     </Animated.View>

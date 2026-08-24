@@ -4,7 +4,7 @@
     "slug": "dots-and-boxes",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "dotsandboxes",
+    "scheme": ["dotsandboxes", "com.dotsandboxes.app"],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -12,7 +12,11 @@
       "bundleIdentifier": "com.dotsandboxes.app"
     },
     "android": {
-      "package": "com.dotsandboxes.app"
+      "package": "com.dotsandboxes.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -23,6 +27,9 @@
       [
         "expo-splash-screen",
         {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
           "backgroundColor": "#0E1116"
         }
       ],
@@ -36,7 +43,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "dad08931-885d-41d1-bdf8-e838d017eaed"
       }
-    }
+    },
+    "owner": "logarithms-team"
   }
 }

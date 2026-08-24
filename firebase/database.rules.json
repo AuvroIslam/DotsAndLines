@@ -3,32 +3,65 @@
     ".read": false,
     ".write": false,
 
-    "gameMembers": {
-      "$gameId": {
-        ".read": "auth != null",
-        ".write": "auth != null && (!data.exists() || data.child(auth.uid).exists())"
-      }
-    },
-
     "games": {
       "$gameId": {
         ".read": "auth != null",
-        ".write": "auth != null && root.child('gameMembers').child($gameId).child(auth.uid).exists()",
-        "players": {
-          "$playerId": {
-            "isConnected": {
-              ".validate": "newData.isBoolean()"
-            }
-          }
-        },
-        ".validate": "newData.hasChildren(['id', 'board', 'players', 'turnOrder', 'currentTurn'])"
+        ".write": false
+      }
+    },
+
+    "gameMembers": {
+      "$gameId": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+
+    "activeGames": {
+      ".indexOn": ".value"
+    },
+
+    "pendingResults": {
+      ".indexOn": ".value"
+    },
+
+    "finishedGames": {
+      ".indexOn": ".value"
+    },
+
+    "userActiveGames": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+
+    "gamePresence": {
+      "$gameId": {
+        ".read": "auth != null",
+        "$playerId": {
+          ".write": "auth != null && root.child('games').child($gameId).child('players').child($playerId).child('uid').val() === auth.uid",
+          "isConnected": { ".validate": "newData.isBoolean()" },
+          "disconnectedAt": { ".validate": "newData.isNumber()" },
+          "lastSeenAt": { ".validate": "newData.isNumber()" }
+        }
       }
     },
 
     "rooms": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists() || newData.child('members').child(auth.uid).exists() || data.child('hostUid').val() == auth.uid)"
+        ".write": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists() || newData.child('members').child(auth.uid).exists() || data.child('hostUid').val() == auth.uid)",
+
+        "hostUid": {
+          ".validate": "!data.exists() || newData.val() === data.val() || data.val() === auth.uid"
+        },
+        "gameId": {
+          ".validate": false
+        },
+        "status": {
+          ".validate": "newData.val() === 'open' || newData.val() === 'starting' || newData.val() === 'closed'"
+        }
       }
     },
 
@@ -39,11 +72,38 @@
       }
     },
 
+    "staleRooms": {
+      ".indexOn": ".value",
+      "$roomId": {
+        ".write": "auth != null && ((newData.isNumber() && (root.child('rooms').child($roomId).child('hostUid').val() === auth.uid || root.child('rooms').child($roomId).child('members').child(auth.uid).exists())) || (!newData.exists() && (!root.child('rooms').child($roomId).exists() || root.child('rooms').child($roomId).child('hostUid').val() === auth.uid || root.child('rooms').child($roomId).child('members').child(auth.uid).exists())))"
+      }
+    },
+
+    "gameInvites": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid === $toUid",
+        "$roomId": {
+          ".write": "auth != null && ((newData.exists() && newData.child('fromUid').val() === auth.uid && root.child('rooms').child($roomId).child('hostUid').val() === auth.uid) || (!newData.exists() && auth.uid === $toUid))",
+          ".validate": "newData.child('roomId').val() === $roomId && newData.child('fromUid').isString() && newData.child('fromName').isString() && newData.child('code').isString() && newData.child('boardSize').isNumber() && newData.child('createdAt').isNumber()"
+        }
+      }
+    },
+
     "matchmaking": {
       "queue": {
         ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && (auth.uid == $uid || (data.exists() && !data.child('gameId').exists() && newData.child('gameId').isString()))"
+          ".write": "auth != null && (auth.uid == $uid || (data.exists() && newData.child('claimedBy').val() == auth.uid && (!data.child('claimedBy').exists() || data.child('claimedBy').val() == auth.uid || !data.child('claimedAt').exists() || data.child('claimedAt').val() < now - 10000)))",
+
+          "gameId": {
+            ".validate": false
+          },
+          "claimedBy": {
+            ".validate": "newData.isString()"
+          },
+          "claimedAt": {
+            ".validate": "newData.isNumber()"
+          }
         }
       }
     },

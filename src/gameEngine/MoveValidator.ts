@@ -3,7 +3,12 @@ import type { GameState, Line, PlayerId } from '@/types';
 import { Board } from './Board';
 
 export type MoveRejectionReason =
-  'game_not_playing' | 'not_your_turn' | 'out_of_bounds' | 'already_drawn' | 'unknown_player';
+  | 'game_not_playing'
+  | 'not_your_turn'
+  | 'out_of_bounds'
+  | 'already_drawn'
+  | 'unknown_player'
+  | 'eliminated';
 
 export type ValidationResult = { valid: true } | { valid: false; reason: MoveRejectionReason };
 
@@ -19,6 +24,9 @@ export class MoveValidator {
     }
     if (state.players[playerId] === undefined) {
       return { valid: false, reason: 'unknown_player' };
+    }
+    if (state.players[playerId]!.isEliminated) {
+      return { valid: false, reason: 'eliminated' };
     }
     if (state.currentTurn !== playerId) {
       return { valid: false, reason: 'not_your_turn' };

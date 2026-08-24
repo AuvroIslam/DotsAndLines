@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { friendRepository, userRepository } from '@/services/firebase';
+import type { SendResult } from '@/services/firebase/friendRepository';
 import type { Friend, FriendRequest, UserProfile } from '@/types';
 
 interface FriendStoreState {
@@ -13,10 +14,12 @@ interface FriendStoreState {
   /** Subscribe to friends + incoming requests for a user. Returns teardown. */
   subscribe: (uid: string) => () => void;
   search: (prefix: string, selfUid: string) => Promise<void>;
-  sendRequest: (from: UserProfile, toUid: string) => Promise<void>;
-  acceptRequest: (request: FriendRequest, self: UserProfile) => Promise<void>;
-  declineRequest: (requestId: string) => Promise<void>;
-  removeFriend: (selfUid: string, friendUid: string) => Promise<void>;
+  sendRequest: (from: UserProfile, toUid: string) => Promise<SendResult | null>;
+  /** These resolve to `false` (never throw) if the write is refused, so a `void`
+   *  call site can't leak an uncaught rejection. */
+  acceptRequest: (request: FriendRequest, self: UserProfile) => Promise<boolean>;
+  declineRequest: (requestId: string) => Promise<boolean>;
+  removeFriend: (selfUid: string, friendUid: string) => Promise<boolean>;
 }
 
 export const useFriendStore = create<FriendStoreState>((set) => ({
@@ -52,19 +55,42 @@ export const useFriendStore = create<FriendStoreState>((set) => ({
   },
 
   sendRequest: async (from, toUid) => {
-    await friendRepository.sendRequest(from, toUid);
+    try {
+      return await friendRepository.sendRequest(from, toUid);
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return null;
+    }
   },
 
   acceptRequest: async (request, self) => {
-    await friendRepository.acceptRequest(request, self);
+    try {
+      await friendRepository.acceptRequest(request, self);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 
   declineRequest: async (requestId) => {
-    await friendRepository.declineRequest(requestId);
+    try {
+      await friendRepository.declineRequest(requestId);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 
   removeFriend: async (selfUid, friendUid) => {
-    await friendRepository.removeFriend(selfUid, friendUid);
+    try {
+      await friendRepository.removeFriend(selfUid, friendUid);
+      return true;
+    } catch (e) {
+      set({ error: toMessage(e) });
+      return false;
+    }
   },
 }));
 

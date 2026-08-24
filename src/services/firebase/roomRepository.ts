@@ -1,15 +1,20 @@
 import { get, onValue, push, ref, remove, runTransaction, set, update } from 'firebase/database';
 
-import { GameManager } from '@/gameEngine';
-import { playerColors } from '@/theme';
-import type { BoardSize, GameMode, Player, PlayerIndex, Room, RoomMember } from '@/types';
+import type { BoardSize, GameMode, PlayerIndex, Room, RoomMember } from '@/types';
 import { ROOM_CODE_LENGTH } from '@/utils/constants';
 
 import { realtimeDb } from './config';
-import { gameRepository } from './gameRepository';
+import { gameFunctions } from './gameFunctions';
 import { RtdbPaths } from './paths';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+
+/**
+ * When to first let the sweep look at a freshly-created room. A lobby that's
+ * never started and sits idle past the server's threshold gets deleted; the
+ * server re-arms this while the lobby is still active, so it isn't sync-critical.
+ */
+const ROOM_FIRST_CHECK_MS = 15 * 60 * 1000;
 
 function generateCode(): string {
   let code = '';
@@ -68,6 +73,10 @@ export const roomRepository = {
 
     await set(roomRef, room);
     await set(ref(realtimeDb, RtdbPaths.roomCodeIndex(code)), id);
+    // Arm cleanup so an abandoned lobby (created, never started) can't leak. The
+    // server re-arms this while the lobby is active and shortens it once a game
+    // starts (see the `staleRooms` sweep step).
+    await set(ref(realtimeDb, RtdbPaths.staleRoom(id)), now + ROOM_FIRST_CHECK_MS);
     return room;
   },
 
@@ -111,6 +120,11 @@ export const roomRepository = {
     );
   },
 
+  async getRoom(roomId: string): Promise<Room | null> {
+    const snap = await get(ref(realtimeDb, RtdbPaths.room(roomId)));
+    return snap.val() as Room | null;
+  },
+
   async setReady(roomId: string, uid: string, isReady: boolean): Promise<void> {
     await update(ref(realtimeDb, RtdbPaths.roomMember(roomId, uid)), { isReady });
   },
@@ -127,6 +141,7 @@ export const roomRepository = {
     if (Object.keys(remaining).length === 0) {
       await remove(node);
       await remove(ref(realtimeDb, RtdbPaths.roomCodeIndex(room.code)));
+      await remove(ref(realtimeDb, RtdbPaths.staleRoom(roomId))); // no orphan cleanup entry
       return;
     }
 
@@ -140,32 +155,21 @@ export const roomRepository = {
     await update(node, patch);
   },
 
-  /** Host-only: convert a ready room into a live game. */
+  /**
+   * Host-only: convert a ready room into a live game.
+   *
+   * The game itself is built by the server — we only name the room. Constructing
+   * it here would mean the host chose the turn clock and the starting player,
+   * which is a forced win (ship a one-second clock, hand the opponent the first
+   * turn, and they time out of the match). The server derives everything from the
+   * room, which the host cannot lie about to it.
+   */
   async startGame(roomId: string): Promise<string> {
-    const node = ref(realtimeDb, RtdbPaths.room(roomId));
-    const room = (await get(node)).val() as Room | null;
-    if (!room) throw new Error('Room not found');
-
-    const sortedMembers = Object.values(room.members ?? {}).sort((a, b) => a.index - b.index);
-    const players: Player[] = sortedMembers.map((m, i) => ({
-      id: `P${m.index + 1}`,
-      uid: m.uid,
-      index: m.index,
-      displayName: m.displayName,
-      color: playerColors[i % playerColors.length]!,
-      isConnected: true,
-      score: 0,
-    }));
-
-    const gameId = roomId; // 1:1 room→game mapping keeps navigation simple
-    const game = GameManager.create({
-      id: gameId,
-      mode: room.mode,
-      size: room.boardSize,
-      players,
-    });
-    await gameRepository.createGame(game);
-    await update(node, { status: 'in_progress', gameId, updatedAt: Date.now() });
-    return gameId;
+    const res = await gameFunctions.startFromRoom(roomId);
+    if (!res.ok) throw new Error(`Could not start game: ${res.code}`);
+    // Only a rematch is ever answered without an id (it waits for the other
+    // players to agree); starting a room always creates the game outright.
+    if (!res.data.gameId) throw new Error('Could not start game: no game was created');
+    return res.data.gameId;
   },
 };

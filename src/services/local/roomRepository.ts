@@ -146,7 +146,8 @@ export const roomRepository = {
       index: m.index,
       displayName: m.displayName,
       color: playerColors[i % playerColors.length]!,
-      isConnected: true,
+      isEliminated: false,
+      consecutiveMisses: 0,
       score: 0,
     }));
 

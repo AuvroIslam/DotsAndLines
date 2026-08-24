@@ -51,7 +51,8 @@ export function useLocalGame(): UseLocalGameReturn {
         index: i as PlayerIndex,
         displayName: p.displayName,
         color: p.color,
-        isConnected: true,
+        isEliminated: false,
+        consecutiveMisses: 0,
         score: 0,
       })),
     });

@@ -1,11 +1,22 @@
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { useAuthStore } from '@/store';
 
 // Required for the OAuth redirect to dismiss the in-app browser on return.
 WebBrowser.maybeCompleteAuthSession();
+
+// Google rejects the web client on native (it only allows https redirects, and
+// native redirects to a custom scheme), so each platform needs its own OAuth
+// client. Without one, expo-auth-session silently falls back to the web client
+// and Google answers with an opaque `Error 400: invalid_request`.
+const platformClientId = Platform.select({
+  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  default: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+});
 
 /**
  * Encapsulates the Google OAuth (id-token) flow via expo-auth-session and hands
@@ -31,7 +42,7 @@ export function useGoogleAuth() {
 
   return {
     /** Whether the OAuth config is loaded and ready to prompt. */
-    ready: !!request,
+    ready: !!request && !!platformClientId,
     submitting,
     signIn: () => promptAsync(),
   };

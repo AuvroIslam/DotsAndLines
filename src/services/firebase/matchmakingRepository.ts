@@ -1,17 +1,43 @@
 import { get, onValue, ref, remove, runTransaction, set } from 'firebase/database';
 
-import { GameManager } from '@/gameEngine';
-import { playerColors } from '@/theme';
-import type { BoardSize, MatchmakingTicket, Player } from '@/types';
-import { createLogger } from '@/utils';
+import type { BoardSize, MatchmakingTicket } from '@/types';
+import { createLogger, describeError } from '@/utils';
 
 import { realtimeDb } from './config';
-import { gameRepository } from './gameRepository';
+import { gameFunctions } from './gameFunctions';
 import { RtdbPaths } from './paths';
 
 const log = createLogger('MM');
 
-type QueuedTicket = MatchmakingTicket & { gameId?: string };
+// Tickets older than this are treated as abandoned (app closed/backgrounded
+// mid-search without cleanup) and excluded from opponent selection so they
+// can't permanently block real players from pairing.
+const MAX_TICKET_AGE_MS = 60_000;
+
+// How long a claim on an opponent's ticket holds before anyone else may take it.
+// A claim is a short-lived lock: the claimer immediately asks the server to build
+// the game (~1s), so this only needs to outlast that round trip. Crucially it
+// must *expire* — a claimer who cancels or crashes between claiming and creating
+// used to leave the opponent's ticket stamped with a claim that the security
+// rules would never let anyone overwrite, deadlocking that player out of
+// matchmaking for good. Keep in step with the rule in database.rules.json.
+const CLAIM_TTL_MS = 10_000;
+
+type QueuedTicket = MatchmakingTicket & {
+  gameId?: string;
+  claimedBy?: string;
+  claimedAt?: number;
+};
+
+/** A claim that is still live: held by someone else, and not yet expired. */
+function claimedByOther(t: QueuedTicket, meUid: string, now: number): boolean {
+  return (
+    !!t.claimedBy &&
+    t.claimedBy !== meUid &&
+    typeof t.claimedAt === 'number' &&
+    now - t.claimedAt < CLAIM_TTL_MS
+  );
+}
 
 /**
  * Random matchmaking (2 players only). A player enqueues a ticket, then a
@@ -25,7 +51,7 @@ export const matchmakingRepository = {
       await set(ref(realtimeDb, RtdbPaths.queueTicket(ticket.uid)), ticket);
       log('enqueued ticket', { uid: ticket.uid, boardSize: ticket.boardSize });
     } catch (e) {
-      log.error('enqueue FAILED (check RTDB rules are deployed)', describe(e));
+      log.error('enqueue FAILED (check RTDB rules are deployed)', describeError(e));
       throw e;
     }
   },
@@ -35,8 +61,43 @@ export const matchmakingRepository = {
       await remove(ref(realtimeDb, RtdbPaths.queueTicket(uid)));
       log('dequeued ticket', { uid });
     } catch (e) {
-      log.error('dequeue failed', describe(e));
+      log.error('dequeue failed', describeError(e));
     }
+  },
+
+  /**
+   * Cancel a search — but only if a match hasn't already been made.
+   *
+   * A plain dequeue here strands the player: pairing runs on another client (or
+   * a poll tick) and creates the game the instant before Cancel, stamping this
+   * ticket with a `gameId`. Removing the ticket then throws that away, while the
+   * game exists on the server with the player in it — who never sees it, misses
+   * every turn and loses a match they were never shown.
+   *
+   * So decide it atomically. If a `gameId` has landed, the match is real: leave
+   * the ticket be and report the game so the caller can navigate *into* it — once
+   * paired, you play. Only if no game has been assigned do we remove the ticket
+   * and genuinely cancel. Returning a plain value (never `undefined`) lets RTDB
+   * re-run the update fn against fresh server data if its first pass saw a cold
+   * cache, so a `gameId` written mid-cancel is never missed.
+   */
+  async cancelSearch(uid: string): Promise<string | null> {
+    const ticketRef = ref(realtimeDb, RtdbPaths.queueTicket(uid));
+    let matchedGameId: string | null = null;
+    try {
+      await runTransaction(ticketRef, (t: QueuedTicket | null) => {
+        matchedGameId = null; // reset each pass; the committed pass is what counts
+        if (t === null) return null; // nothing queued (or cold cache — RTDB re-runs)
+        if (t.gameId) {
+          matchedGameId = t.gameId; // matched mid-cancel — keep the ticket, honor it
+          return t;
+        }
+        return null; // not matched — remove the ticket, cancel wins
+      });
+    } catch (e) {
+      log.error('cancelSearch failed', describeError(e));
+    }
+    return matchedGameId;
   },
 
   /** Watch my own ticket; once `gameId` appears, the match is ready. */
@@ -49,7 +110,7 @@ export const matchmakingRepository = {
         log('own ticket update', { uid, gameId: ticket?.gameId ?? null, exists: snap.exists() });
         cb(ticket);
       },
-      (e) => log.error('ticket subscription error', describe(e)),
+      (e) => log.error('ticket subscription error', describeError(e)),
     );
   },
 
@@ -63,7 +124,7 @@ export const matchmakingRepository = {
       const queueSnap = await get(ref(realtimeDb, RtdbPaths.queue));
       queue = (queueSnap.val() as Record<string, QueuedTicket>) ?? {};
     } catch (e) {
-      log.error('reading queue FAILED (check RTDB rules are deployed)', describe(e));
+      log.error('reading queue FAILED (check RTDB rules are deployed)', describeError(e));
       return null;
     }
 
@@ -74,8 +135,21 @@ export const matchmakingRepository = {
       tickets: tickets.map((t) => ({ uid: t.uid, board: t.boardSize, gameId: t.gameId ?? null })),
     });
 
+    const now = Date.now();
     const opponent = tickets
-      .filter((t) => t.uid !== me.uid && !t.gameId && t.boardSize === me.boardSize)
+      .filter(
+        (t) =>
+          t.uid !== me.uid &&
+          !t.gameId &&
+          // Board compatibility: a Quick-Match (flexible) player pairs with anyone;
+          // two specific players pair only on the same size. The actual board is
+          // resolved server-side from both tickets (createGameFromMatch).
+          (me.flexible || t.flexible || t.boardSize === me.boardSize) &&
+          now - t.enqueuedAt < MAX_TICKET_AGE_MS &&
+          // Skip someone another player is actively pairing with; a *stale* claim
+          // (claimer gone) or one we hold ourselves is fair game.
+          !claimedByOther(t, me.uid, now),
+      )
       .sort((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
 
     if (!opponent) {
@@ -97,8 +171,11 @@ export const matchmakingRepository = {
     log('poll: opponent found — attempting claim', { me: me.uid, opponent: opponent.uid });
 
     // Claim the opponent's ticket atomically so no third player can grab them.
+    // We only stake a claim — we no longer invent the game id or build the game,
+    // because a client that authors the game also chooses its turn clock and
+    // starting player, which is a forced win. The server reads this claim back
+    // and creates the game itself.
     const oppRef = ref(realtimeDb, RtdbPaths.queueTicket(opponent.uid));
-    const gameId = `rnd_${me.uid}_${opponent.uid}_${Date.now()}`;
     let committed = false;
     try {
       const claim = await runTransaction(oppRef, (t: QueuedTicket | null) => {
@@ -106,13 +183,15 @@ export const matchmakingRepository = {
         // for a node we haven't synced. Returning undefined here would abort
         // without ever fetching server data, so seed the write from the snapshot
         // we already read — RTDB then re-runs with authoritative server data.
-        if (t === null) return { ...opponent, gameId };
-        if (t.gameId) return; // already claimed by someone else -> abort
-        return { ...t, gameId };
+        if (t === null) return { ...opponent, claimedBy: me.uid, claimedAt: Date.now() };
+        if (t.gameId) return; // already in a game -> abort
+        if (claimedByOther(t, me.uid, Date.now())) return; // live claim by someone else -> abort
+        // Unclaimed, ours already, or a stale claim we may take over.
+        return { ...t, claimedBy: me.uid, claimedAt: Date.now() };
       });
       committed = claim.committed;
     } catch (e) {
-      log.error('claim transaction FAILED (check RTDB rules)', describe(e));
+      log.error('claim transaction FAILED (check RTDB rules)', describeError(e));
       return null;
     }
 
@@ -121,37 +200,18 @@ export const matchmakingRepository = {
       return null;
     }
 
-    const players: Player[] = [buildPlayer(me, 0), buildPlayer(opponent, 1)];
-    const game = GameManager.create({ id: gameId, mode: 'random', size: me.boardSize, players });
-    try {
-      await gameRepository.createGame(game);
-      // Stamp my own ticket so my subscription resolves to the same game.
-      await set(ref(realtimeDb, RtdbPaths.queueTicket(me.uid)), { ...me, gameId });
-    } catch (e) {
-      log.error('creating game / stamping ticket FAILED', describe(e));
+    // The server verifies the claim from the tickets themselves, builds the game,
+    // and stamps the id onto both tickets — so both of us resolve to it.
+    const res = await gameFunctions.startFromMatch(opponent.uid);
+    if (!res.ok) {
+      log.error('server refused to create the match', { code: res.code });
       return null;
     }
 
-    log('MATCH MADE 🎉', { gameId, p1: me.uid, p2: opponent.uid });
-    return gameId;
+    log('MATCH MADE 🎉', { gameId: res.data.gameId, p1: me.uid, p2: opponent.uid });
+    return res.data.gameId;
   },
 };
 
-function buildPlayer(ticket: MatchmakingTicket, index: 0 | 1): Player {
-  return {
-    id: `P${index + 1}`,
-    uid: ticket.uid,
-    index,
-    displayName: ticket.displayName,
-    color: playerColors[index]!,
-    isConnected: true,
-    score: 0,
-  };
-}
-
-function describe(e: unknown): { code?: string; message: string } {
-  const err = e as { code?: string; message?: string };
-  return { code: err?.code, message: err?.message ?? String(e) };
-}
 
 export type { BoardSize };

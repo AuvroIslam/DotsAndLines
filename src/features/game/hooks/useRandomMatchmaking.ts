@@ -5,7 +5,16 @@ import { Routes } from '@/navigation/routes';
 import { matchmakingRepository } from '@/services/firebase';
 import { useAuthStore } from '@/store';
 import type { BoardSize, MatchmakingTicket } from '@/types';
-import { createLogger } from '@/utils';
+import { createLogger, DEFAULT_BOARD } from '@/utils';
+
+/**
+ * What to search for. Quick Match is `{ flexible: true }` — any board, the server
+ * picks it. A specific board is `{ boardSize }` (flexible defaults false).
+ */
+export interface MatchPrefs {
+  boardSize?: BoardSize;
+  flexible?: boolean;
+}
 
 const MATCH_POLL_MS = 2_000;
 const log = createLogger('MM');
@@ -22,6 +31,8 @@ export function useRandomMatchmaking() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ticketUnsub = useRef<(() => void) | null>(null);
   const navigated = useRef(false);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
 
   const teardown = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -44,7 +55,7 @@ export function useRandomMatchmaking() {
   );
 
   const start = useCallback(
-    async (boardSize: BoardSize) => {
+    async (prefs: MatchPrefs = {}) => {
       if (!profile) {
         log.warn('start() ignored — no profile (are you signed in?)');
         return;
@@ -53,15 +64,20 @@ export function useRandomMatchmaking() {
         log.warn('start() ignored — already searching');
         return;
       }
+      const flexible = !!prefs.flexible;
+      // A flexible ticket still carries a boardSize, but it's only a fallback for
+      // the both-flexible case; the server never trusts it otherwise.
+      const boardSize = prefs.boardSize ?? DEFAULT_BOARD;
       navigated.current = false;
       setSearching(true);
-      log('START searching', { uid: profile.uid, boardSize });
+      log('START searching', { uid: profile.uid, boardSize, flexible });
 
       const ticket: MatchmakingTicket = {
         uid: profile.uid,
         displayName: profile.displayName,
         enqueuedAt: Date.now(),
         boardSize,
+        flexible,
       };
       await matchmakingRepository.enqueue(ticket);
 
@@ -84,12 +100,43 @@ export function useRandomMatchmaking() {
 
   const cancel = useCallback(() => {
     log('CANCEL searching', { uid: profile?.uid });
-    teardown();
-    setSearching(false);
-    if (profile) void matchmakingRepository.dequeue(profile.uid);
-  }, [profile, teardown]);
+    // Stop polling at once so we can't make a *new* match while cancelling, but
+    // keep watching our ticket until the outcome is settled.
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
 
-  useEffect(() => () => teardown(), [teardown]);
+    if (!profile) {
+      teardown();
+      setSearching(false);
+      return;
+    }
+
+    void (async () => {
+      // Cancel only if unmatched. If pairing beat us to it, the game already
+      // exists with us in it — honor the match and go play it rather than strand
+      // ourselves out of a game the server thinks we're in.
+      const gameId = await matchmakingRepository.cancelSearch(profile.uid);
+      if (gameId) {
+        log('cancel raced a real match — joining it', { uid: profile.uid, gameId });
+        goToGame(gameId, profile.uid);
+      } else {
+        teardown();
+        setSearching(false);
+      }
+    })();
+  }, [profile, teardown, goToGame]);
+
+  useEffect(
+    () => () => {
+      teardown();
+      // Unmounting mid-search (navigating away, dev reload, etc.) must not
+      // leave an orphaned ticket in the queue — it would otherwise block all
+      // future matchmaking, since other clients defer to the oldest ticket.
+      const uid = profileRef.current?.uid;
+      if (uid) void matchmakingRepository.dequeue(uid);
+    },
+    [teardown],
+  );
 
   return { searching, start, cancel };
 }
