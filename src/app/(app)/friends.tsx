@@ -2,7 +2,17 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, EmptyState, Screen, SegmentedControl, TextField, Typography } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  PageIntro,
+  Screen,
+  SegmentedControl,
+  TextField,
+  Typography,
+} from '@/components/ui';
 import { useFriends, useFriendsPresence } from '@/features/friends';
 import { Routes } from '@/navigation/routes';
 import { invitationRepository, roomRepository } from '@/services/firebase';
@@ -34,7 +44,8 @@ export default function FriendsScreen() {
 
   const onAdd = async (uid: string) => {
     const result = await sendRequest(uid);
-    if (result === 'sent' || result === 'already-requested') setRequested((r) => ({ ...r, [uid]: true }));
+    if (result === 'sent' || result === 'already-requested')
+      setRequested((r) => ({ ...r, [uid]: true }));
     if (result === 'befriended') setRequested((r) => ({ ...r, [uid]: false }));
     // A user-initiated tap must not fail in silence (the store swallows the error).
     if (result == null) alertActionFailed('Could not send request');
@@ -76,7 +87,12 @@ export default function FriendsScreen() {
   };
 
   return (
-    <Screen>
+    <Screen contentStyle={styles.content}>
+      <PageIntro
+        title="Friends"
+        subtitle="Find a playmate, see who's online, and send a challenge."
+        accent={colors.primary}
+      />
       <TextField
         label="Find players"
         placeholder="Search by username"
@@ -91,7 +107,7 @@ export default function FriendsScreen() {
             {isSearching ? 'Searching…' : 'Results'}
           </Typography>
           {searchResults.map((u) => (
-            <Card key={u.uid} style={styles.row}>
+            <Card key={u.uid} style={[styles.row, { borderColor: colors.primary }]}>
               <Avatar name={u.displayName} uri={u.photoURL} size={40} />
               <View style={styles.info}>
                 <Typography variant="body">{u.displayName}</Typography>
@@ -108,7 +124,12 @@ export default function FriendsScreen() {
                   Requested
                 </Typography>
               ) : (
-                <Button label="Add" onPress={() => void onAdd(u.uid)} style={styles.smallBtn} />
+                <Button
+                  label="Add"
+                  icon="person-add"
+                  onPress={() => void onAdd(u.uid)}
+                  style={styles.smallBtn}
+                />
               )}
             </Card>
           ))}
@@ -119,7 +140,7 @@ export default function FriendsScreen() {
         Friends
       </Typography>
       {friends.length > 0 ? (
-        <Card>
+        <Card style={{ borderColor: colors.warning }}>
           <Typography variant="caption" muted>
             Invite board
           </Typography>
@@ -136,20 +157,14 @@ export default function FriendsScreen() {
         scrollEnabled={false}
         ListEmptyComponent={
           <EmptyState
-            emoji="👋"
             title="No friends yet"
             subtitle="Search by username to send your first request."
           />
         }
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         renderItem={({ item }) => (
-          <Card style={styles.row}>
-            <Avatar
-              name={item.displayName}
-              uri={item.photoURL}
-              size={40}
-              color={colors.success}
-            />
+          <Card style={[styles.row, online[item.uid] && { borderColor: colors.success }]}>
+            <Avatar name={item.displayName} uri={item.photoURL} size={40} color={colors.success} />
             <View style={styles.info}>
               <Typography variant="body">{item.displayName}</Typography>
               <Typography
@@ -161,6 +176,7 @@ export default function FriendsScreen() {
             </View>
             <Button
               label="Invite"
+              icon="paper-plane"
               onPress={() => void invite(item.uid)}
               style={styles.smallBtn}
             />
@@ -178,10 +194,11 @@ export default function FriendsScreen() {
 }
 
 const styles = StyleSheet.create({
+  content: { maxWidth: 700 },
   section: { marginTop: spacing.sm },
   stateLabel: { paddingHorizontal: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   info: { flex: 1 },
-  smallBtn: { height: 40, paddingHorizontal: spacing.md },
-  iconBtn: { height: 40, width: 40, paddingHorizontal: 0 },
+  smallBtn: { minHeight: 42, height: 42, paddingHorizontal: spacing.md },
+  iconBtn: { minHeight: 42, height: 42, width: 42, paddingHorizontal: 0 },
 });

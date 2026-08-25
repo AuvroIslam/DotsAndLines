@@ -62,16 +62,26 @@ function LineSegmentBase({
       hitSlop={hitSlop}
       style={[styles.container, containerStyle]}
     >
-      {!drawn && interactive ? (
+      {!drawn ? (
         <Animated.View
-          style={[styles.fill, styles.crossFull, styles.hint, { borderRadius: thickness / 2 }]}
+          style={[
+            styles.fill,
+            styles.crossFull,
+            interactive ? styles.hint : styles.rail,
+            { borderRadius: thickness / 2 },
+          ]}
         />
       ) : null}
       <Animated.View
         style={[
           styles.fill,
           horizontal ? styles.crossFullHeight : styles.crossFullWidth,
-          { backgroundColor: color, borderRadius: thickness / 2 },
+          {
+            backgroundColor: color,
+            borderRadius: thickness / 2,
+            borderWidth: drawn ? 1.5 : 0,
+            borderColor: colors.ink,
+          },
           fillStyle,
         ]}
       />
@@ -86,7 +96,8 @@ const createStyles = (colors: AppColors) =>
     crossFull: { width: '100%', height: '100%' },
     crossFullHeight: { height: '100%' },
     crossFullWidth: { width: '100%' },
-    hint: { backgroundColor: colors.dotIdle, opacity: 0.4 },
+    hint: { backgroundColor: colors.primary, opacity: 0.38 },
+    rail: { backgroundColor: colors.boardRail, opacity: 1 },
   });
 
 export const LineSegment = memo(LineSegmentBase);

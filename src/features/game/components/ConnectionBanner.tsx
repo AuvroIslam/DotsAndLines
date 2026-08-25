@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
-import { Typography } from '@/components/ui';
+import { FrameDots, Typography } from '@/components/ui';
 import type { ConnectionStatus } from '@/store';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 const MESSAGES: Partial<Record<ConnectionStatus, string>> = {
@@ -21,7 +21,8 @@ export function ConnectionBanner({ status }: { status: ConnectionStatus }) {
   if (!message) return null;
   return (
     <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={styles.banner}>
-      <Typography variant="caption" color={colors.bg}>
+      <FrameDots color={colors.warning} size={8} />
+      <Typography variant="caption" color={colors.ink}>
         {message}
       </Typography>
     </Animated.View>
@@ -32,9 +33,12 @@ const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     banner: {
       alignSelf: 'center',
+      position: 'relative',
       backgroundColor: colors.warning,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
-      borderRadius: radius.pill,
+      borderRadius: 3,
+      borderWidth: 2,
+      borderColor: colors.warning,
     },
   });

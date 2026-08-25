@@ -23,7 +23,11 @@ export function TurnTimerBar({ fraction, color }: TurnTimerBarProps) {
   const danger = fraction < 0.25;
 
   return (
-    <View style={styles.track}>
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(fraction * 100) }}
+      style={styles.track}
+    >
       <Animated.View
         style={[styles.fill, { backgroundColor: danger ? colors.danger : color }, style]}
       />
@@ -34,10 +38,10 @@ export function TurnTimerBar({ fraction, color }: TurnTimerBarProps) {
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     track: {
-      height: 6,
-      borderRadius: 3,
+      height: 7,
+      borderRadius: 4,
       backgroundColor: colors.surfaceAlt,
       overflow: 'hidden',
     },
-    fill: { height: '100%', borderRadius: 3 },
+    fill: { height: '100%', borderRadius: 4, minWidth: 2 },
   });

@@ -19,7 +19,7 @@ export function Badge({ count, floating }: BadgeProps) {
     <View
       style={[
         styles.badge,
-        { backgroundColor: colors.danger, borderColor: colors.bg },
+        { backgroundColor: colors.danger, borderColor: colors.ink },
         floating && styles.floating,
       ]}
     >
@@ -34,12 +34,12 @@ const styles = StyleSheet.create({
   badge: {
     minWidth: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: 3,
     paddingHorizontal: 4,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   floating: { position: 'absolute', top: -6, right: -6 },
-  text: { fontSize: 11, lineHeight: 14, fontWeight: '700' },
+  text: { fontSize: 11, lineHeight: 14, fontFamily: 'Fredoka_700Bold' },
 });

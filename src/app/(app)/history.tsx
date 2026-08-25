@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
-import { Card, EmptyState, Loader, Screen, Typography } from '@/components/ui';
+import { Card, EmptyState, Loader, PageIntro, Screen, Typography } from '@/components/ui';
 import { useMatchHistory } from '@/features/profile';
 import { useAuthStore } from '@/store';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { MatchOutcome } from '@/types';
 
@@ -34,22 +34,23 @@ export default function HistoryScreen() {
   if (isLoading) return <Loader message="Loading history…" />;
 
   return (
-    <Screen>
+    <Screen contentStyle={styles.content}>
+      <PageIntro
+        title="Match History"
+        subtitle="Every duel leaves a little trail."
+        accent={colors.purple}
+      />
       <FlatList
         data={history ?? []}
         keyExtractor={(m) => m.id}
         ListEmptyComponent={
-          <EmptyState
-            emoji="🎮"
-            title="No matches yet"
-            subtitle="Play a game to start your history."
-          />
+          <EmptyState title="No matches yet" subtitle="Play a game to start your history." />
         }
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         renderItem={({ item }) => (
-          <Card style={styles.row}>
+          <Card style={[styles.row, { borderColor: outcomeColors[item.outcome] }]}>
             <View style={[styles.badge, { backgroundColor: outcomeColors[item.outcome] }]}>
-              <Typography variant="caption" color={colors.bg}>
+              <Typography variant="caption" color={colors.ink}>
                 {item.outcome.toUpperCase()}
               </Typography>
             </View>
@@ -63,7 +64,9 @@ export default function HistoryScreen() {
                 {timeAgo(item.playedAt)}
               </Typography>
             </View>
-            <Typography variant="h3">{item.myScore}</Typography>
+            <View style={[styles.score, { borderColor: outcomeColors[item.outcome] }]}>
+              <Typography variant="h3">{item.myScore}</Typography>
+            </View>
           </Card>
         )}
       />
@@ -72,7 +75,16 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  content: { maxWidth: 680 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  badge: { borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  badge: { borderRadius: 3, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   info: { flex: 1 },
+  score: {
+    minWidth: 44,
+    height: 44,
+    borderRadius: 3,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

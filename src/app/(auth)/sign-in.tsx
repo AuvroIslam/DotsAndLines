@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Screen, Typography } from '@/components/ui';
+import { BrandLockup, Button, PlayerDuoArt, Screen, Typography } from '@/components/ui';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAuthStore } from '@/store';
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 export default function SignInScreen() {
@@ -25,29 +25,37 @@ export default function SignInScreen() {
   };
 
   return (
-    <Screen contentStyle={styles.content}>
+    <Screen scroll contentStyle={styles.content}>
       <View style={styles.hero}>
-        <View style={styles.logo}>
-          <Typography variant="h1">⬛</Typography>
-        </View>
-        <Typography variant="h1" center>
-          Dots & Boxes
-        </Typography>
-        <Typography variant="body" muted center>
-          Play classic Dots & Boxes with friends or random opponents in realtime.
+        <BrandLockup />
+        <PlayerDuoArt size={230} />
+        <Typography
+          variant="body"
+          muted
+          center
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.68}
+          style={styles.singleLineTagline}
+        >
+          Draw a line. Complete a square. Outsmart your friends.
         </Typography>
       </View>
 
       <View style={styles.actions}>
         <Button
           label="Continue with Google"
+          icon="logo-google"
+          frameColor={colors.primary}
           onPress={() => google.signIn()}
           disabled={!google.ready}
           loading={google.submitting}
         />
         <Button
           label="Play as Guest"
+          icon="sparkles"
           variant="secondary"
+          frameColor={colors.accent}
           onPress={handleAnonymous}
           loading={busy}
         />
@@ -57,21 +65,36 @@ export default function SignInScreen() {
           </Typography>
         ) : null}
       </View>
+      <Typography
+        variant="caption"
+        muted
+        center
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.68}
+        style={styles.singleLineTagline}
+      >
+        A friendly strategy game for quick matches and couch battles.
+      </Typography>
     </Screen>
   );
 }
 
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
-    content: { justifyContent: 'space-between', paddingVertical: spacing.xxl },
-    hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-    logo: {
-      width: 96,
-      height: 96,
-      borderRadius: radius.lg,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
+    content: { justifyContent: 'center', paddingVertical: spacing.xl, maxWidth: 520 },
+    hero: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+    singleLineTagline: {
+      width: '100%',
+      alignSelf: 'stretch',
+      flexShrink: 1,
+      fontSize: 12,
+      lineHeight: 16,
+      letterSpacing: -0.2,
+      includeFontPadding: false,
     },
-    actions: { gap: spacing.md },
+    actions: {
+      width: '100%',
+      gap: spacing.xl,
+    },
   });

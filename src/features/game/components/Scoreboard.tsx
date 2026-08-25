@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Typography } from '@/components/ui';
-import { radius, spacing } from '@/theme';
+import { FrameDots, Typography } from '@/components/ui';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GamePresence, GameState } from '@/types';
 
@@ -22,28 +22,43 @@ export function Scoreboard({ game, presence, myPlayerId }: ScoreboardProps) {
     <View style={styles.row}>
       {players.map((p) => {
         const active = game.currentTurn === p!.id && game.phase === 'playing';
+        const disconnected = presence[p!.id]?.isConnected === false;
+        const displayName = p!.uid === myPlayerId || p!.id === myPlayerId ? 'You' : p!.displayName;
         return (
           <View
             key={p!.id}
-            style={[
-              styles.chip,
-              { borderColor: p!.color },
-              active && { backgroundColor: p!.color + '22' },
-            ]}
+            style={[styles.chip, { borderColor: p!.color }, active && styles.activeChip]}
           >
-            <View style={[styles.dot, { backgroundColor: p!.color }]} />
-            <View>
-              <Typography variant="caption" muted>
-                {p!.uid === myPlayerId || p!.id === myPlayerId ? 'You' : p!.displayName}
-                {p!.isEliminated
-                  ? ' · left'
-                  : presence[p!.id]?.isConnected === false
-                    ? ' ·offline'
-                    : ''}
+            <FrameDots color={p!.color} size={9} />
+            <View style={styles.nameRow}>
+              <View style={[styles.dot, { backgroundColor: p!.color }]} />
+              <Typography
+                variant="caption"
+                center
+                numberOfLines={1}
+                color={active ? p!.color : colors.textMuted}
+                style={styles.name}
+              >
+                {displayName}
               </Typography>
-              <Typography variant="h3">{p!.score}</Typography>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: p!.isEliminated || disconnected ? colors.dotIdle : p!.color },
+                ]}
+              />
             </View>
-            {active ? <View style={[styles.activePulse, { backgroundColor: p!.color }]} /> : null}
+            <Typography variant="h2" center style={styles.score}>
+              {p!.score}
+            </Typography>
+            <Typography
+              variant="caption"
+              center
+              color={active ? p!.color : colors.textMuted}
+              style={styles.state}
+            >
+              {p!.isEliminated ? 'LEFT' : disconnected ? 'OFFLINE' : active ? 'PLAYING' : 'READY'}
+            </Typography>
           </View>
         );
       })}
@@ -53,17 +68,39 @@ export function Scoreboard({ game, presence, myPlayerId }: ScoreboardProps) {
 
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
-    row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
-    chip: {
+    row: {
+      width: '100%',
+      maxWidth: 460,
+      alignSelf: 'center',
       flexDirection: 'row',
-      alignItems: 'center',
+      flexWrap: 'wrap',
       gap: spacing.sm,
-      borderWidth: 1.5,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
+      justifyContent: 'center',
+    },
+    chip: {
+      flexBasis: 132,
+      flexGrow: 1,
+      maxWidth: 220,
+      minHeight: 94,
+      position: 'relative',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderRadius: 4,
+      paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
       backgroundColor: colors.surface,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 0,
+      elevation: 2,
     },
-    dot: { width: 12, height: 12, borderRadius: 6 },
-    activePulse: { width: 6, height: 6, borderRadius: 3, marginLeft: 2 },
+    activeChip: { backgroundColor: colors.surfaceAlt, transform: [{ translateY: -2 }] },
+    nameRow: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    name: { flex: 1, includeFontPadding: false },
+    dot: { width: 11, height: 11, borderRadius: 6 },
+    statusDot: { width: 7, height: 7, borderRadius: 4 },
+    score: { lineHeight: 31, includeFontPadding: false },
+    state: { fontSize: 10, lineHeight: 13, letterSpacing: 1.1, includeFontPadding: false },
   });

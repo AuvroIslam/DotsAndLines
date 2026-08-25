@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { Button, Typography } from '@/components/ui';
-import { radius, spacing } from '@/theme';
+import { Button, FrameDots, PlayerDuoArt, Typography } from '@/components/ui';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState } from '@/types';
 
@@ -44,7 +44,10 @@ export function GameOverlay({
   // Nobody left playing — the match is void rather than won by whoever happened
   // to run out of turns second.
   const isNoContest = result.winners.length === 0;
-  const winnerLabel = result.winners.map((id) => game.players[id]?.displayName).filter(Boolean).join(', ');
+  const winnerLabel = result.winners
+    .map((id) => game.players[id]?.displayName)
+    .filter(Boolean)
+    .join(', ');
 
   const title = isNoContest
     ? 'No Contest'
@@ -72,9 +75,8 @@ export function GameOverlay({
   return (
     <Animated.View entering={FadeIn.duration(250)} style={styles.backdrop}>
       <View style={styles.card}>
-        <Typography variant="h1" center>
-          {isNoContest ? '🚫' : result.isDraw ? '🤝' : iWon || myPlayerId === null ? '🏆' : '😔'}
-        </Typography>
+        <FrameDots color={colors.warning} size={12} />
+        <PlayerDuoArt size={154} />
         <Typography variant="h2" center>
           {title}
         </Typography>
@@ -112,16 +114,21 @@ export function GameOverlay({
               // We've asked; nothing starts until they do. Keep the button live as
               // a way *out* of the wait — a disabled "Waiting…" trapped a player
               // whose opponent had simply left, with no way to take the offer back.
-              <Button label="Waiting for opponent — tap to cancel" onPress={onCancelRematch ?? onExit} />
+              <Button
+                label="Waiting — tap to cancel"
+                icon="hourglass"
+                onPress={onCancelRematch ?? onExit}
+              />
             )
           ) : (
             <Button
               label={othersOfferedRematch ? 'Accept Rematch' : 'Rematch'}
+              icon="refresh"
               onPress={onRematch}
             />
           )
         ) : null}
-        <Button label="Back to Home" variant="secondary" onPress={onExit} />
+        <Button label="Back to Home" icon="home" variant="secondary" onPress={onExit} />
       </View>
     </Animated.View>
   );
@@ -131,7 +138,7 @@ const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     backdrop: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.7)',
+      backgroundColor: 'rgba(2,11,24,0.82)',
       alignItems: 'center',
       justifyContent: 'center',
       padding: spacing.lg,
@@ -139,12 +146,18 @@ const createStyles = (colors: AppColors) =>
     card: {
       width: '100%',
       maxWidth: 360,
+      position: 'relative',
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderRadius: 5,
+      borderWidth: 3,
+      borderColor: colors.warning,
       padding: spacing.xl,
       gap: spacing.md,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.9,
+      shadowRadius: 0,
+      elevation: 9,
     },
     scores: { gap: spacing.sm, marginVertical: spacing.sm },
     scoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Typography } from '@/components/ui';
-import { radius, spacing } from '@/theme';
+import { BrandLockup, PlayerDuoArt, PlayfulBackground, Typography } from '@/components/ui';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 /**
@@ -15,12 +15,11 @@ export default function Splash() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.container}>
-      <View style={styles.logo}>
-        <Typography variant="h1">⬛</Typography>
-      </View>
-      <Typography variant="h1">Dots & Boxes</Typography>
+      <PlayfulBackground />
+      <BrandLockup />
+      <PlayerDuoArt size={190} />
       <Typography variant="body" muted>
-        Connect the dots. Claim the boxes.
+        Draw. Claim. Cheer.
       </Typography>
     </View>
   );
@@ -34,14 +33,5 @@ const createStyles = (colors: AppColors) =>
       justifyContent: 'center',
       backgroundColor: colors.bg,
       gap: spacing.sm,
-    },
-    logo: {
-      width: 96,
-      height: 96,
-      borderRadius: radius.lg,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: spacing.md,
     },
   });

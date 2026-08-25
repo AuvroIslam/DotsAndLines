@@ -1,9 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, EmptyState, Screen, Typography } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, PageIntro, Screen, Typography } from '@/components/ui';
 import { useFriends } from '@/features/friends';
-import type { FriendRequest } from '@/types';
 import { theme } from '@/theme';
+import type { FriendRequest } from '@/types';
 import { alertActionFailed } from '@/utils';
 
 export default function FriendRequestsScreen() {
@@ -22,14 +22,16 @@ export default function FriendRequestsScreen() {
 
   if (incomingRequests.length === 0) {
     return (
-      <Screen>
-        <EmptyState emoji="📬" title="No pending requests" subtitle="You're all caught up." />
+      <Screen contentStyle={styles.content}>
+        <PageIntro title="Friend Requests" subtitle="New challengers land here." />
+        <EmptyState title="No pending requests" subtitle="You're all caught up." />
       </Screen>
     );
   }
 
   return (
-    <Screen>
+    <Screen contentStyle={styles.content}>
+      <PageIntro title="Friend Requests" subtitle="Say hello to a new challenger." />
       {incomingRequests.map((req) => (
         <Card key={req.id} style={styles.row}>
           <Avatar name={req.fromDisplayName} size={44} />
@@ -41,6 +43,7 @@ export default function FriendRequestsScreen() {
           </View>
           <Button
             label="Accept"
+            icon="checkmark"
             style={styles.smallBtn}
             onPress={() => void onAccept(req)}
           />
@@ -57,7 +60,8 @@ export default function FriendRequestsScreen() {
 }
 
 const styles = StyleSheet.create({
+  content: { maxWidth: 680 },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   info: { flex: 1 },
-  smallBtn: { height: 40, paddingHorizontal: theme.spacing.md },
+  smallBtn: { minHeight: 42, height: 42, paddingHorizontal: theme.spacing.sm },
 });

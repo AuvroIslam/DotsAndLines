@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { Avatar, Button, Card, Screen, TextField, Typography } from '@/components/ui';
+import { Avatar, Button, Card, PageIntro, Screen, TextField, Typography } from '@/components/ui';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore, useProfileStore } from '@/store';
 import { spacing } from '@/theme';
@@ -36,15 +36,22 @@ export default function ProfileScreen() {
   };
 
   return (
-    <Screen scroll>
-      <View style={styles.header}>
+    <Screen scroll contentStyle={styles.content}>
+      <PageIntro
+        title="Player Card"
+        subtitle="Make your name memorable on every grid."
+        accent={colors.accent}
+      />
+      <Card style={[styles.header, { borderColor: colors.accent }]}>
         <Avatar name={profile?.displayName ?? 'Player'} uri={profile?.photoURL} size={84} />
+        <Typography variant="h2">{profile?.displayName ?? 'Player'}</Typography>
         <Typography variant="caption" muted>
           {profile?.provider === 'anonymous' ? 'Guest account' : 'Google account'}
         </Typography>
-      </View>
+      </Card>
 
-      <Card>
+      <Card style={{ borderColor: colors.primary }}>
+        <Typography variant="h3">Edit your badge</Typography>
         <TextField
           label="Display name"
           value={displayName}
@@ -60,7 +67,12 @@ export default function ProfileScreen() {
           maxLength={20}
           error={error}
         />
-        <Button label="Save changes" loading={isSaving} onPress={handleSave} />
+        <Button
+          label="Save changes"
+          icon="checkmark-circle"
+          loading={isSaving}
+          onPress={handleSave}
+        />
         {savedAt ? (
           <Typography variant="caption" color={colors.success}>
             Saved!
@@ -70,15 +82,22 @@ export default function ProfileScreen() {
 
       <Button
         label="View Statistics"
+        icon="stats-chart"
         variant="secondary"
         onPress={() => router.push(Routes.statistics)}
       />
-      <Button label="Settings" variant="secondary" onPress={() => router.push(Routes.settings)} />
-      <Button label="Sign out" variant="danger" onPress={() => void signOut()} />
+      <Button
+        label="Settings"
+        icon="settings"
+        variant="secondary"
+        onPress={() => router.push(Routes.settings)}
+      />
+      <Button label="Sign out" icon="log-out" variant="danger" onPress={() => void signOut()} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: { maxWidth: 620 },
   header: { alignItems: 'center', gap: spacing.sm },
 });
