@@ -1,49 +1,67 @@
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
+import { useState } from 'react';
 
 import { useAuthStore } from '@/store';
 
-// Required for the OAuth redirect to dismiss the in-app browser on return.
-WebBrowser.maybeCompleteAuthSession();
-
-// Google rejects the web client on native (it only allows https redirects, and
-// native redirects to a custom scheme), so each platform needs its own OAuth
-// client. Without one, expo-auth-session silently falls back to the web client
-// and Google answers with an opaque `Error 400: invalid_request`.
-const platformClientId = Platform.select({
-  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  default: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+// Configure once globally
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  scopes: ['profile', 'email'],
 });
 
 /**
- * Encapsulates the Google OAuth (id-token) flow via expo-auth-session and hands
- * the resulting token to the auth store. UI only calls `promptAsync()`.
+ * Encapsulates native Google Sign-In and hands the resulting ID token
+ * to Firebase Auth via the auth store.
  */
 export function useGoogleAuth() {
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle);
   const [submitting, setSubmitting] = useState(false);
 
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  });
-
-  useEffect(() => {
-    if (response?.type !== 'success') return;
-    const idToken = response.params.id_token;
-    if (!idToken) return;
-    setSubmitting(true);
-    signInWithGoogle(idToken).finally(() => setSubmitting(false));
-  }, [response, signInWithGoogle]);
+  const signIn = async () => {
+    try {
+      setSubmitting(true);
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (isSuccessResponse(response)) {
+        const idToken = response.data.idToken;
+        if (!idToken) {
+          throw new Error('Google Sign-In succeeded but no ID token was returned.');
+        }
+        await signInWithGoogle(idToken);
+      }
+    } catch (error: any) {
+      if (isErrorWithCode(error)) {
+        switch (error.code) {
+          case statusCodes.SIGN_IN_CANCELLED:
+            // User cancelled the login flow - no action required
+            break;
+          case statusCodes.IN_PROGRESS:
+            // Operation is in progress already
+            break;
+          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+            console.error('Google Play Services is not available or outdated.');
+            break;
+          default:
+            console.error('Google Sign-In error:', error);
+        }
+      } else {
+        console.error('Unexpected error during Google Sign-In:', error);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return {
-    /** Whether the OAuth config is loaded and ready to prompt. */
-    ready: !!request && !!platformClientId,
+    ready: true,
     submitting,
-    signIn: () => promptAsync(),
+    signIn,
   };
 }
+
