@@ -14,7 +14,7 @@ import { useAuthStore } from '@/store';
  * before proceeding. If the user is already signed in with Google, `guard()`
  * resolves to `true` immediately. If the user is a guest (anonymous), it shows
  * a confirmation Alert and — on acceptance — triggers the Google sign-in flow
- * to upgrade (link) the anonymous account in-place, preserving all data.
+ * to sign in directly, unlocking online features and loading their cloud profile.
  *
  * Usage:
  * ```ts
@@ -27,7 +27,7 @@ import { useAuthStore } from '@/store';
  */
 export function useRequireGoogleAuth() {
   const profile = useAuthStore((s) => s.profile);
-  const linkWithGoogle = useAuthStore((s) => s.linkWithGoogle);
+  const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle);
   const busyRef = useRef(false);
 
   const guard = useCallback(async (): Promise<boolean> => {
@@ -43,7 +43,7 @@ export function useRequireGoogleAuth() {
       const accepted = await new Promise<boolean>((resolve) => {
         Alert.alert(
           'Sign in required',
-          'Online features need a Google account. Sign in now to keep your progress!',
+          'Online features need a Google account. Sign in now to play online and save your progress!',
           [
             { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
             { text: 'Sign In', onPress: () => resolve(true) },
@@ -54,7 +54,7 @@ export function useRequireGoogleAuth() {
 
       if (!accepted) return false;
 
-      // Trigger the native Google sign-in and link.
+      // Trigger the native Google sign-in.
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
       if (isSuccessResponse(response)) {
@@ -63,7 +63,7 @@ export function useRequireGoogleAuth() {
           console.error('Google Sign-In succeeded but no ID token was returned.');
           return false;
         }
-        await linkWithGoogle(idToken);
+        await signInWithGoogle(idToken);
         return true;
       }
       return false;
@@ -81,13 +81,14 @@ export function useRequireGoogleAuth() {
             console.error('Google Sign-In error:', error);
         }
       } else {
-        console.error('Unexpected error during account linking:', error);
+        console.error('Unexpected error during Google Sign-In:', error);
       }
       return false;
     } finally {
       busyRef.current = false;
     }
-  }, [profile?.provider, linkWithGoogle]);
+  }, [profile?.provider, signInWithGoogle]);
 
   return { guard };
 }
+

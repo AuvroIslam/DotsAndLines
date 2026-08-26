@@ -21,7 +21,7 @@ export function useFriends() {
   const removeFriend = useFriendStore((s) => s.removeFriend);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || profile.provider !== 'google') return;
     const unsub = subscribe(profile.uid);
     return unsub;
   }, [profile, subscribe]);

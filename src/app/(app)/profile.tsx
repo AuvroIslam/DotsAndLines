@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { Avatar, Button, Card, PageIntro, Screen, TextField, Typography } from '@/components/ui';
+import { useRequireGoogleAuth } from '@/hooks/useRequireGoogleAuth';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore, useProfileStore } from '@/store';
 import { spacing } from '@/theme';
@@ -12,9 +13,13 @@ export default function ProfileScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
+  const setProfile = useAuthStore((s) => s.setProfile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const isSaving = useProfileStore((s) => s.isSaving);
+  const { guard } = useRequireGoogleAuth();
   const colors = useThemeColors();
+
+  const isGuest = profile?.provider === 'anonymous';
 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [username, setUsername] = useState(profile?.username ?? '');
@@ -23,6 +28,14 @@ export default function ProfileScreen() {
 
   const handleSave = async () => {
     if (!profile) return;
+    if (isGuest) {
+      setProfile({
+        ...profile,
+        displayName: displayName.trim() || 'Guest Player',
+      });
+      setSavedAt(Date.now());
+      return;
+    }
     setError(null);
     const res = await updateProfile(profile.uid, {
       displayName: displayName.trim(),
@@ -46,7 +59,7 @@ export default function ProfileScreen() {
         <Avatar name={profile?.displayName ?? 'Player'} uri={profile?.photoURL} size={84} />
         <Typography variant="h2">{profile?.displayName ?? 'Player'}</Typography>
         <Typography variant="caption" muted>
-          {profile?.provider === 'anonymous' ? 'Guest account' : 'Google account'}
+          {isGuest ? 'Playing as Guest' : 'Google account'}
         </Typography>
       </Card>
 
@@ -58,15 +71,17 @@ export default function ProfileScreen() {
           onChangeText={setDisplayName}
           maxLength={24}
         />
-        <TextField
-          label="Username"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={20}
-          error={error}
-        />
+        {!isGuest ? (
+          <TextField
+            label="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={20}
+            error={error}
+          />
+        ) : null}
         <Button
           label="Save changes"
           icon="checkmark-circle"
@@ -80,24 +95,48 @@ export default function ProfileScreen() {
         ) : null}
       </Card>
 
-      <Button
-        label="View Statistics"
-        icon="stats-chart"
-        variant="secondary"
-        onPress={() => router.push(Routes.statistics)}
-      />
+      {isGuest ? (
+        <Card style={[styles.guestCard, { borderColor: colors.primary }]}>
+          <Typography variant="h3" center>
+            Unlock Online Play
+          </Typography>
+          <Typography variant="caption" muted center>
+            Sign in with Google to challenge friends online, track your statistics, and climb the leaderboard!
+          </Typography>
+          <Button
+            label="Sign In with Google"
+            icon="logo-google"
+            onPress={async () => {
+              await guard();
+            }}
+          />
+        </Card>
+      ) : (
+        <Button
+          label="View Statistics"
+          icon="stats-chart"
+          variant="secondary"
+          onPress={() => router.push(Routes.statistics)}
+        />
+      )}
+
       <Button
         label="Settings"
         icon="settings"
         variant="secondary"
         onPress={() => router.push(Routes.settings)}
       />
-      <Button label="Sign out" icon="log-out" variant="danger" onPress={() => void signOut()} />
+
+      {!isGuest ? (
+        <Button label="Sign out" icon="log-out" variant="danger" onPress={() => void signOut()} />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { maxWidth: 620 },
+  content: { maxWidth: 620, gap: spacing.md },
   header: { alignItems: 'center', gap: spacing.sm },
+  guestCard: { gap: spacing.sm, alignItems: 'center' },
 });
+

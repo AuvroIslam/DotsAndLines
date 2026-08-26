@@ -8,17 +8,17 @@ import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 export default function SignInScreen() {
-  const signInAnonymously = useAuthStore((s) => s.signInAnonymously);
+  const signInAsGuest = useAuthStore((s) => s.signInAsGuest);
   const error = useAuthStore((s) => s.error);
   const google = useGoogleAuth();
   const [busy, setBusy] = useState(false);
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const handleAnonymous = async () => {
+  const handleGuest = async () => {
     setBusy(true);
     try {
-      await signInAnonymously();
+      await signInAsGuest();
     } finally {
       setBusy(false);
     }
@@ -56,7 +56,7 @@ export default function SignInScreen() {
           icon="sparkles"
           variant="secondary"
           frameColor={colors.accent}
-          onPress={handleAnonymous}
+          onPress={handleGuest}
           loading={busy}
         />
         {error ? (

@@ -9,7 +9,7 @@ import { useAuthStore, useSettingsStore } from '@/store';
  */
 export function useAppBootstrap(): { ready: boolean } {
   const status = useAuthStore((s) => s.status);
-  const uid = useAuthStore((s) => s.user?.uid ?? null);
+  const uid = useAuthStore((s) => (s.profile?.provider === 'google' ? s.user?.uid ?? null : null));
   const initialize = useAuthStore((s) => s.initialize);
   const loadSettings = useSettingsStore((s) => s.load);
   const presenceTeardown = useRef<(() => void) | null>(null);
