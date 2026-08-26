@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { Avatar, Button, Card, Screen, TextField, Typography } from '@/components/ui';
+import { Avatar, Button, Card, PageIntro, Screen, TextField, Typography } from '@/components/ui';
+import { useRequireGoogleAuth } from '@/hooks/useRequireGoogleAuth';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore, useProfileStore } from '@/store';
 import { spacing } from '@/theme';
@@ -12,9 +13,13 @@ export default function ProfileScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
+  const setGuestName = useAuthStore((s) => s.setGuestName);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const isSaving = useProfileStore((s) => s.isSaving);
+  const { guard } = useRequireGoogleAuth();
   const colors = useThemeColors();
+
+  const isGuest = profile?.provider === 'anonymous';
 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [username, setUsername] = useState(profile?.username ?? '');
@@ -23,6 +28,11 @@ export default function ProfileScreen() {
 
   const handleSave = async () => {
     if (!profile) return;
+    if (isGuest) {
+      await setGuestName(displayName);
+      setSavedAt(Date.now());
+      return;
+    }
     setError(null);
     const res = await updateProfile(profile.uid, {
       displayName: displayName.trim(),
@@ -36,31 +46,45 @@ export default function ProfileScreen() {
   };
 
   return (
-    <Screen scroll>
-      <View style={styles.header}>
+    <Screen scroll contentStyle={styles.content}>
+      <PageIntro
+        title="Player Card"
+        subtitle="Make your name memorable on every grid."
+        accent={colors.accent}
+      />
+      <Card style={[styles.header, { borderColor: colors.accent }]}>
         <Avatar name={profile?.displayName ?? 'Player'} uri={profile?.photoURL} size={84} />
+        <Typography variant="h2">{profile?.displayName ?? 'Player'}</Typography>
         <Typography variant="caption" muted>
-          {profile?.provider === 'anonymous' ? 'Guest account' : 'Google account'}
+          {isGuest ? 'Playing as Guest' : 'Google account'}
         </Typography>
-      </View>
+      </Card>
 
-      <Card>
+      <Card style={{ borderColor: colors.primary }}>
+        <Typography variant="h3">Edit your badge</Typography>
         <TextField
           label="Display name"
           value={displayName}
           onChangeText={setDisplayName}
           maxLength={24}
         />
-        <TextField
-          label="Username"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={20}
-          error={error}
+        {!isGuest ? (
+          <TextField
+            label="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={20}
+            error={error}
+          />
+        ) : null}
+        <Button
+          label="Save changes"
+          icon="checkmark-circle"
+          loading={isSaving}
+          onPress={handleSave}
         />
-        <Button label="Save changes" loading={isSaving} onPress={handleSave} />
         {savedAt ? (
           <Typography variant="caption" color={colors.success}>
             Saved!
@@ -68,17 +92,48 @@ export default function ProfileScreen() {
         ) : null}
       </Card>
 
+      {isGuest ? (
+        <Card style={[styles.guestCard, { borderColor: colors.primary }]}>
+          <Typography variant="h3" center>
+            Unlock Online Play
+          </Typography>
+          <Typography variant="caption" muted center>
+            Sign in with Google to challenge friends online, track your statistics, and climb the leaderboard!
+          </Typography>
+          <Button
+            label="Sign In with Google"
+            icon="logo-google"
+            onPress={async () => {
+              await guard();
+            }}
+          />
+        </Card>
+      ) : (
+        <Button
+          label="View Statistics"
+          icon="stats-chart"
+          variant="secondary"
+          onPress={() => router.push(Routes.statistics)}
+        />
+      )}
+
       <Button
-        label="View Statistics"
+        label="Settings"
+        icon="settings"
         variant="secondary"
-        onPress={() => router.push(Routes.statistics)}
+        onPress={() => router.push(Routes.settings)}
       />
-      <Button label="Settings" variant="secondary" onPress={() => router.push(Routes.settings)} />
-      <Button label="Sign out" variant="danger" onPress={() => void signOut()} />
+
+      {!isGuest ? (
+        <Button label="Sign out" icon="log-out" variant="danger" onPress={() => void signOut()} />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: { maxWidth: 620, gap: spacing.md },
   header: { alignItems: 'center', gap: spacing.sm },
+  guestCard: { gap: spacing.sm, alignItems: 'center' },
 });
+

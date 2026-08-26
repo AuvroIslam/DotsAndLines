@@ -3,14 +3,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, EmptyState, Loader, Typography } from '@/components/ui';
+import {
+  AppBackButton,
+  Button,
+  EmptyState,
+  Loader,
+  PlayfulBackground,
+  Typography,
+} from '@/components/ui';
 import {
   ConnectionBanner,
   GameBoard,
   GameOverlay,
   PeerDisconnectBanner,
   Scoreboard,
-  TurnTimerBar,
+  TurnStatus,
   useConnectionMonitor,
   useLiveGame,
   useMatchRecorder,
@@ -145,9 +152,10 @@ export default function GameScreen() {
     if (everLoaded.current !== gameId) return <Loader message="Joining game…" />;
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <PlayfulBackground quiet />
         <View style={styles.boardArea}>
-          <EmptyState emoji="🏁" title="This game has ended" subtitle="It was finished or removed." />
-          <Button label="Back to Home" onPress={() => router.replace(Routes.home)} />
+          <EmptyState title="This game has ended" subtitle="It was finished or removed." />
+          <AppBackButton label="Back to Home" onPress={() => router.replace(Routes.home)} />
         </View>
       </SafeAreaView>
     );
@@ -210,39 +218,39 @@ export default function GameScreen() {
   const bonusSuffix = bonusActive ? ' · Bonus move' : '';
   const turnLabel =
     game.phase === 'finished'
-      ? 'Game over'
+      ? 'Match complete'
       : iAmEliminated
-        ? 'You left — watching'
+        ? 'Watching the remaining players'
         : isMyTurn
-          ? `Your turn${bonusSuffix}`
-          : `${currentPlayer?.displayName ?? 'Opponent'}'s turn${bonusSuffix}`;
+          ? `Your move${bonusSuffix}`
+          : `${currentPlayer?.displayName ?? 'Opponent'} to move${bonusSuffix}`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <PlayfulBackground quiet />
       <View style={styles.header}>
         {/* Concede an in-progress game (then you can rematch); an eliminated
             spectator or a finished game just leaves. */}
-        <Button
-          label={iAmEliminated || game.phase !== 'playing' ? 'Leave' : 'Forfeit'}
-          variant="ghost"
-          onPress={handleLeave}
-        />
-        <ConnectionBanner status={connection} />
-        <View style={styles.spacer} />
+        <AppBackButton onPress={handleLeave} />
+        <View style={styles.liveTitle}>
+          <Typography variant="caption" color={colors.warning}>
+            LIVE GRID
+          </Typography>
+          <ConnectionBanner status={connection} />
+        </View>
+        <View style={styles.headerBalance} />
       </View>
 
       <PeerDisconnectBanner game={game} awayPeers={awayPeers} />
 
       <Scoreboard game={game} presence={presence} myPlayerId={myPlayerId} />
 
-      <View style={styles.turnRow}>
-        <Typography variant="h3" color={currentPlayer?.color}>
-          {turnLabel}
-        </Typography>
-      </View>
-      <View style={styles.timer}>
-        <TurnTimerBar fraction={fraction} color={currentPlayer?.color ?? colors.primary} />
-      </View>
+      <TurnStatus
+        label={turnLabel}
+        fraction={fraction}
+        color={currentPlayer?.color ?? colors.primary}
+        finished={game.phase === 'finished'}
+      />
 
       <View style={styles.boardArea}>
         <GameBoard
@@ -266,8 +274,7 @@ export default function GameScreen() {
           // we're the one being waited on.
           iOfferedRematch={iOfferedRematch}
           othersOfferedRematch={
-            !!uid &&
-            Object.keys(game.rematchOffers ?? {}).some((offeredBy) => offeredBy !== uid)
+            !!uid && Object.keys(game.rematchOffers ?? {}).some((offeredBy) => offeredBy !== uid)
           }
           rematchStalled={rematchStalled}
           onRematch={handleRematch}
@@ -287,8 +294,7 @@ const createStyles = (colors: AppColors) =>
       gap: spacing.md,
     },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    spacer: { width: 64 },
-    turnRow: { alignItems: 'center' },
-    timer: { paddingHorizontal: spacing.xl },
+    liveTitle: { flex: 1, alignItems: 'center' },
+    headerBalance: { width: 94 },
     boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   });

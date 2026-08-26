@@ -1,3 +1,10 @@
+import {
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
+  useFonts,
+} from '@expo-google-fonts/fredoka';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
@@ -26,6 +33,15 @@ function RootNavigator() {
 
 export default function RootLayout() {
   const scheme = useAppColorScheme();
+  const [fontsLoaded] = useFonts({
+    Fredoka_400Regular,
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
     <AppProviders>
       <StatusBar style={scheme === 'light' ? 'dark' : 'light'} />

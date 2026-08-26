@@ -56,8 +56,8 @@ export function useRandomMatchmaking() {
 
   const start = useCallback(
     async (prefs: MatchPrefs = {}) => {
-      if (!profile) {
-        log.warn('start() ignored — no profile (are you signed in?)');
+      if (!profile || profile.provider !== 'google') {
+        log.warn('start() ignored — requires Google sign-in');
         return;
       }
       if (searching) {
@@ -105,7 +105,7 @@ export function useRandomMatchmaking() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
 
-    if (!profile) {
+    if (!profile || profile.provider !== 'google') {
       teardown();
       setSearching(false);
       return;
@@ -132,8 +132,9 @@ export function useRandomMatchmaking() {
       // Unmounting mid-search (navigating away, dev reload, etc.) must not
       // leave an orphaned ticket in the queue — it would otherwise block all
       // future matchmaking, since other clients defer to the oldest ticket.
+      const isGoogleUser = profileRef.current?.provider === 'google';
       const uid = profileRef.current?.uid;
-      if (uid) void matchmakingRepository.dequeue(uid);
+      if (isGoogleUser && uid) void matchmakingRepository.dequeue(uid);
     },
     [teardown],
   );

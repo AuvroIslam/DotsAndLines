@@ -1,6 +1,5 @@
 import {
   GoogleAuthProvider,
-  signInAnonymously,
   signInWithCredential,
   signOut as fbSignOut,
   onAuthStateChanged,
@@ -13,6 +12,10 @@ import { firebaseAuth } from './config';
 /**
  * Thin adapter over Firebase Auth. Knows nothing about app stores or UI;
  * higher layers (authStore / hooks) orchestrate state from these primitives.
+ *
+ * Anonymous auth is intentionally absent: "Guest" mode is a pure local
+ * session (no Firebase account created), so no backend resources are consumed
+ * and the app is immune to anonymous-account spam attacks.
  */
 export const authService = {
   getCurrentUser(): FirebaseUser | null {
@@ -23,12 +26,7 @@ export const authService = {
     return onAuthStateChanged(firebaseAuth, callback);
   },
 
-  async signInAnonymously(): Promise<FirebaseUser> {
-    const cred = await signInAnonymously(firebaseAuth);
-    return cred.user;
-  },
-
-  /** Exchange a Google OAuth id token (from expo-auth-session) for a session. */
+  /** Exchange a Google OAuth id token for a Firebase session. */
   async signInWithGoogle(idToken: string): Promise<FirebaseUser> {
     const credential = GoogleAuthProvider.credential(idToken);
     const cred = await signInWithCredential(firebaseAuth, credential);
@@ -47,3 +45,4 @@ export const authService = {
 };
 
 export type { FirebaseUser };
+

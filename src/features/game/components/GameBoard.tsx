@@ -16,9 +16,9 @@ interface GameBoardProps {
   onDraw: (line: Line) => void;
 }
 
-const DOT = 10;
-const LINE_THICKNESS = 7;
-const MAX_BOARD = 420;
+const DOT = 14;
+const LINE_THICKNESS = 9;
+const MAX_BOARD = 430;
 const MARGIN = themeSpacing.lg;
 
 /**
@@ -26,17 +26,17 @@ const MARGIN = themeSpacing.lg;
  * N×N grid and maps every line/box/dot to an animated child. Holds no game rules.
  */
 export function GameBoard({ game, pendingLines, interactive, onDraw }: GameBoardProps) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const n = game.board.size;
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { boardPx, pad, spacing } = useMemo(() => {
-    const boardPxLocal = Math.min(width - MARGIN * 2, MAX_BOARD);
+    const boardPxLocal = Math.min(width - MARGIN * 2, height * 0.5, MAX_BOARD);
     const padLocal = DOT;
     const spacingLocal = (boardPxLocal - padLocal * 2) / n;
     return { boardPx: boardPxLocal, pad: padLocal, spacing: spacingLocal };
-  }, [width, n]);
+  }, [height, width, n]);
 
   const dotAt = (row: number, col: number) => ({
     x: pad + col * spacing,
@@ -142,12 +142,31 @@ export function GameBoard({ game, pendingLines, interactive, onDraw }: GameBoard
 
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
-    board: { alignSelf: 'center', position: 'relative' },
+    board: {
+      alignSelf: 'center',
+      position: 'relative',
+      backgroundColor: colors.board,
+      borderRadius: 6,
+      borderWidth: 3,
+      borderColor: colors.border,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 7 },
+      shadowOpacity: 0.85,
+      shadowRadius: 0,
+      elevation: 7,
+    },
     dot: {
       position: 'absolute',
       width: DOT,
       height: DOT,
       borderRadius: DOT / 2,
-      backgroundColor: colors.text,
+      backgroundColor: colors.bg,
+      borderWidth: 3,
+      borderColor: colors.primary,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.6,
+      shadowRadius: 0,
+      elevation: 2,
     },
   });

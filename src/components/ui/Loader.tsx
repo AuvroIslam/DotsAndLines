@@ -4,6 +4,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
+import { PlayerDuoArt } from './PlayerDuoArt';
+import { PlayfulBackground } from './PlayfulBackground';
 import { Typography } from './Typography';
 
 export function Loader({ message }: { message?: string }) {
@@ -11,6 +13,8 @@ export function Loader({ message }: { message?: string }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.container}>
+      <PlayfulBackground quiet />
+      <PlayerDuoArt size={150} />
       <ActivityIndicator size="large" color={colors.primary} />
       {message ? (
         <Typography variant="body" muted>
@@ -29,5 +33,6 @@ const createStyles = (colors: AppColors) =>
       justifyContent: 'center',
       gap: spacing.md,
       backgroundColor: colors.bg,
+      padding: spacing.xl,
     },
   });

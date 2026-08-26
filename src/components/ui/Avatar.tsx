@@ -22,10 +22,12 @@ export function Avatar({ name, uri, size = 44, color }: AvatarProps) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const dim = { width: size, height: size, borderRadius: size / 2 };
   if (uri) {
-    return <Image source={{ uri }} style={[dim, styles.image]} />;
+    return <Image source={{ uri }} style={[dim, styles.image, styles.frame]} />;
   }
   return (
-    <View style={[dim, styles.fallback, { backgroundColor: color ?? colors.primary }]}>
+    <View
+      style={[dim, styles.fallback, styles.frame, { backgroundColor: color ?? colors.primary }]}
+    >
       <Text style={[styles.text, { fontSize: size * 0.4 }]}>{initials(name)}</Text>
     </View>
   );
@@ -34,6 +36,14 @@ export function Avatar({ name, uri, size = 44, color }: AvatarProps) {
 const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     image: { backgroundColor: colors.surfaceAlt },
+    frame: {
+      borderWidth: 3,
+      borderColor: colors.ink,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.75,
+      shadowRadius: 0,
+    },
     fallback: { alignItems: 'center', justifyContent: 'center' },
-    text: { color: colors.text, fontWeight: '700' },
+    text: { color: colors.ink, fontFamily: 'Fredoka_700Bold' },
   });

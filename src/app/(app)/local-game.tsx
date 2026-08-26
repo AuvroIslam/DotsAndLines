@@ -3,13 +3,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Screen, SegmentedControl, TextField, Typography } from '@/components/ui';
 import {
-  GameBoard,
-  GameOverlay,
-  Scoreboard,
-  TurnTimerBar,
-} from '@/features/game';
+  AppBackButton,
+  Button,
+  Card,
+  PageIntro,
+  PlayfulBackground,
+  Screen,
+  SegmentedControl,
+  TextField,
+  Typography,
+} from '@/components/ui';
+import { GameBoard, GameOverlay, Scoreboard, TurnStatus } from '@/features/game';
 import type { AIDifficulty } from '@/features/game/ai';
 import { useLocalGame } from '@/features/game/hooks/useLocalGame';
 import { Routes } from '@/navigation/routes';
@@ -19,7 +24,7 @@ import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { BoardSize } from '@/types';
 import { BOARD_SIZES } from '@/utils';
 
-const PLAYER_COLORS = ['#e74c3c', '#3498db'] as const;
+const PLAYER_COLORS = ['#FF7867', '#35D0C8'] as const;
 const DIFFICULTIES: { label: string; value: AIDifficulty }[] = [
   { label: 'Easy', value: 'easy' },
   { label: 'Medium', value: 'medium' },
@@ -90,7 +95,13 @@ export default function LocalGameScreen() {
     startGame(boardSize, [
       { id: 'local-1', displayName: names[0] || 'Player 1', color: PLAYER_COLORS[0] },
       opponent === 'ai'
-        ? { id: 'local-2', displayName: 'Computer', color: PLAYER_COLORS[1], isAI: true, aiDifficulty: difficulty }
+        ? {
+            id: 'local-2',
+            displayName: 'Computer',
+            color: PLAYER_COLORS[1],
+            isAI: true,
+            aiDifficulty: difficulty,
+          }
         : { id: 'local-2', displayName: names[1] || 'Player 2', color: PLAYER_COLORS[1] },
     ]);
     prevLines.current = 0;
@@ -99,108 +110,114 @@ export default function LocalGameScreen() {
 
   if (!game) {
     return (
-      <Screen scroll>
-        <Typography variant="h2">Local Play</Typography>
-        <Typography variant="body" muted>
-          Two players, one device. Take turns drawing lines.
-        </Typography>
-
-        <Typography variant="h3" style={styles.sectionTop}>
-          Board Size
-        </Typography>
-        <View style={styles.sizeRow}>
-          {BOARD_SIZES.map((s) => (
-            <Button
-              key={s}
-              label={`${s}×${s}`}
-              variant={boardSize === s ? 'primary' : 'secondary'}
-              style={styles.sizeBtn}
-              onPress={() => setBoardSize(s)}
-            />
-          ))}
-        </View>
-
-        <Typography variant="h3" style={styles.sectionTop}>
-          Opponent
-        </Typography>
-        <SegmentedControl
-          options={[
-            { label: 'Human', value: 'human' },
-            { label: 'Computer', value: 'ai' },
-          ]}
-          value={opponent}
-          onChange={setOpponent}
+      <Screen scroll contentStyle={styles.setupContent}>
+        <AppBackButton
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace(Routes.home);
+          }}
+        />
+        <PageIntro
+          title="Couch Duel"
+          subtitle="One device, two minds, plenty of cheeky moves."
+          accent={colors.accent}
         />
 
-        <Typography variant="h3" style={styles.sectionTop}>
-          Players
-        </Typography>
-        <View style={styles.playerRow}>
-          <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[0] }]} />
-          <TextField
-            value={names[0]}
-            onChangeText={(v) => setNames([v, names[1]])}
-            placeholder="Player 1"
-            style={styles.nameField}
-          />
-        </View>
-        {opponent === 'ai' ? (
-          <View style={styles.sectionTop}>
-            <SegmentedControl options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
+        <Card style={{ borderColor: colors.warning }}>
+          <Typography variant="h3">Choose the grid</Typography>
+          <View style={styles.sizeRow}>
+            {BOARD_SIZES.map((s) => (
+              <Button
+                key={s}
+                label={`${s}×${s}`}
+                variant={boardSize === s ? 'primary' : 'secondary'}
+                style={styles.sizeBtn}
+                onPress={() => setBoardSize(s)}
+              />
+            ))}
           </View>
-        ) : (
+        </Card>
+
+        <Card style={{ borderColor: colors.primary }}>
+          <Typography variant="h3">Pick an opponent</Typography>
+          <SegmentedControl
+            options={[
+              { label: 'A friend', value: 'human' },
+              { label: 'Computer', value: 'ai' },
+            ]}
+            value={opponent}
+            onChange={setOpponent}
+          />
+        </Card>
+
+        <Card style={{ borderColor: colors.accent }}>
+          <Typography variant="h3">Name the players</Typography>
           <View style={styles.playerRow}>
-            <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[1] }]} />
+            <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[0] }]} />
             <TextField
-              value={names[1]}
-              onChangeText={(v) => setNames([names[0], v])}
-              placeholder="Player 2"
+              value={names[0]}
+              onChangeText={(v) => setNames([v, names[1]])}
+              placeholder="Player 1"
               style={styles.nameField}
             />
           </View>
-        )}
+          {opponent === 'ai' ? (
+            <View style={styles.sectionTop}>
+              <Typography variant="caption" muted>
+                Computer skill
+              </Typography>
+              <SegmentedControl
+                options={DIFFICULTIES}
+                value={difficulty}
+                onChange={setDifficulty}
+              />
+            </View>
+          ) : (
+            <View style={styles.playerRow}>
+              <View style={[styles.colorDot, { backgroundColor: PLAYER_COLORS[1] }]} />
+              <TextField
+                value={names[1]}
+                onChangeText={(v) => setNames([names[0], v])}
+                placeholder="Player 2"
+                style={styles.nameField}
+              />
+            </View>
+          )}
+        </Card>
 
-        <Button label="Start Game" style={styles.sectionTop} onPress={handleStart} />
-        <Button label="Back" variant="ghost" onPress={() => router.back()} />
+        <Button label="Start Game" icon="play" style={styles.sectionTop} onPress={handleStart} />
       </Screen>
     );
   }
 
   const turnLabel =
     game.phase === 'finished'
-      ? 'Game over'
+      ? 'Match complete'
       : isAITurn && aiThinking
-        ? `${currentPlayer?.displayName ?? '?'} is thinking…`
-        : `${currentPlayer?.displayName ?? '?'}'s turn`;
+        ? `${currentPlayer?.displayName ?? 'Computer'} is thinking…`
+        : `${currentPlayer?.displayName ?? 'Player'} to move`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <PlayfulBackground quiet />
       <View style={styles.header}>
-        <Button
-          label="Leave"
-          variant="ghost"
+        <AppBackButton
           onPress={() => {
             reset();
             router.replace(Routes.home);
           }}
         />
-        <View style={styles.spacer} />
       </View>
 
       {/* Local play is a single device — nobody can be offline, so no presence. */}
       <Scoreboard game={game} presence={{}} myPlayerId={null} />
 
-      <View style={styles.turnRow}>
-        <Typography variant="h3" color={currentPlayer?.color}>
-          {turnLabel}
-        </Typography>
-      </View>
-      <View style={styles.timerRow}>
-        <TurnTimerBar
-          fraction={timerFraction}
-          color={currentPlayer?.color ?? colors.primary}
-        />
-      </View>
+      <TurnStatus
+        label={turnLabel}
+        fraction={timerFraction}
+        color={currentPlayer?.color ?? colors.primary}
+        finished={game.phase === 'finished'}
+      />
 
       <View style={styles.boardArea}>
         <GameBoard
@@ -240,11 +257,9 @@ const createStyles = (colors: AppColors) =>
       padding: spacing.lg,
       gap: spacing.md,
     },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    spacer: { width: 64 },
-    turnRow: { alignItems: 'center' },
-    timerRow: { paddingHorizontal: spacing.xl },
+    header: { flexDirection: 'row', alignItems: 'center' },
     boardArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    setupContent: { maxWidth: 620 },
     sectionTop: { marginTop: spacing.md },
     sizeRow: { flexDirection: 'row', gap: spacing.md },
     sizeBtn: { flex: 1 },

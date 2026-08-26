@@ -3,6 +3,7 @@
     "name": "Dots & Boxes",
     "slug": "dots-and-boxes",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": ["dotsandboxes", "com.dotsandboxes.app"],
     "userInterfaceStyle": "automatic",
@@ -13,10 +14,11 @@
     },
     "android": {
       "package": "com.dotsandboxes.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#081B31"
+      },
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
     },
     "web": {
       "bundler": "metro",
@@ -27,15 +29,17 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/illustrations/human-duo-hero.png",
+          "imageWidth": 260,
           "resizeMode": "contain",
-          "backgroundColor": "#0E1116"
+          "backgroundColor": "#081B31"
         }
       ],
       "expo-asset",
       "expo-audio",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true

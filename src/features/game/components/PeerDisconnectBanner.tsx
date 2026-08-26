@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
-import { Typography } from '@/components/ui';
-import { radius, spacing } from '@/theme';
+import { FrameDots, Typography } from '@/components/ui';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 import type { GameState, PlayerId } from '@/types';
 
@@ -26,8 +26,9 @@ export function PeerDisconnectBanner({ game, awayPeers }: PeerDisconnectBannerPr
 
   return (
     <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={styles.banner}>
+      <FrameDots color={colors.warning} size={8} />
       {awayPeers.map((peerId) => (
-        <Typography key={peerId} variant="caption" color={colors.bg}>
+        <Typography key={peerId} variant="caption" color={colors.ink}>
           {game.players[peerId]?.displayName ?? 'Opponent'} is reconnecting…
         </Typography>
       ))}
@@ -39,10 +40,13 @@ const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     banner: {
       alignSelf: 'center',
+      position: 'relative',
       backgroundColor: colors.warning,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
-      borderRadius: radius.pill,
+      borderRadius: 3,
       gap: 2,
+      borderWidth: 2,
+      borderColor: colors.warning,
     },
   });

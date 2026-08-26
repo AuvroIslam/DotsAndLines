@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useThemeColors, type AppColors } from '@/theme/useTheme';
 
 import { Typography } from './Typography';
+import { FrameDots } from './FrameDots';
 
 interface SegmentedControlProps<T extends string | number> {
   options: { label: string; value: T }[];
@@ -29,7 +30,13 @@ export function SegmentedControl<T extends string | number>({
             onPress={() => onChange(opt.value)}
             style={[styles.segment, active && styles.active]}
           >
-            <Typography variant="body" color={active ? colors.text : colors.textMuted}>
+            <FrameDots color={active ? colors.primary : colors.surfaceAlt} size={8} />
+            <Typography
+              variant="body"
+              center
+              color={active ? colors.ink : colors.text}
+              style={styles.label}
+            >
               {opt.label}
             </Typography>
           </Pressable>
@@ -43,18 +50,23 @@ const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     container: {
       flexDirection: 'row',
-      backgroundColor: colors.surface,
-      borderRadius: radius.md,
-      padding: spacing.xs,
-      gap: spacing.xs,
-      borderWidth: 1,
-      borderColor: colors.border,
+      gap: spacing.md,
     },
     segment: {
       flex: 1,
+      position: 'relative',
+      minHeight: 44,
       paddingVertical: spacing.sm,
+      justifyContent: 'center',
       alignItems: 'center',
-      borderRadius: radius.sm,
+      borderRadius: 3,
+      borderWidth: 2,
+      borderColor: colors.surfaceAlt,
+      backgroundColor: colors.surfaceAlt,
     },
-    active: { backgroundColor: colors.primary },
+    label: { flexShrink: 1, width: '100%' },
+    active: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
   });

@@ -1,6 +1,7 @@
 export { GameBoard } from './components/GameBoard';
 export { Scoreboard } from './components/Scoreboard';
 export { TurnTimerBar } from './components/TurnTimerBar';
+export { TurnStatus } from './components/TurnStatus';
 export { GameOverlay } from './components/GameOverlay';
 export { ConnectionBanner } from './components/ConnectionBanner';
 export { PeerDisconnectBanner } from './components/PeerDisconnectBanner';
