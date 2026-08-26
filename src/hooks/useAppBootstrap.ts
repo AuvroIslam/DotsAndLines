@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 
+import { configureGoogleSignIn } from '@/services/auth/googleAuth';
 import { presenceRepository } from '@/services/firebase';
 import { useAuthStore, useSettingsStore } from '@/store';
 
 /**
  * App-level side effects wired once at the root: auth subscription, presence
- * tracking, and settings hydration. Keeps screens free of lifecycle plumbing.
+ * tracking, settings hydration, and Google Sign-In configuration.
  */
 export function useAppBootstrap(): { ready: boolean } {
   const status = useAuthStore((s) => s.status);
@@ -15,6 +16,7 @@ export function useAppBootstrap(): { ready: boolean } {
   const presenceTeardown = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    configureGoogleSignIn();
     const unsub = initialize();
     return unsub;
   }, [initialize]);

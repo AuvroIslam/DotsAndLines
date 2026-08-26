@@ -9,6 +9,7 @@ export type AuthStatus = 'initializing' | 'authenticated' | 'unauthenticated';
 
 export const GUEST_USER_ID = 'local_guest';
 const GUEST_SESSION_KEY = '@dots_guest_session';
+const GUEST_NAME_KEY = '@dots_guest_name';
 
 export function createGuestProfile(name = 'Guest Player'): UserProfile {
   const now = Date.now();
@@ -36,6 +37,7 @@ interface AuthState {
   signInWithGoogle: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
   setProfile: (profile: UserProfile) => void;
+  setGuestName: (name: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -78,10 +80,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // No Firebase user. Check if we have an active local guest session.
         const isGuest = await AsyncStorage.getItem(GUEST_SESSION_KEY);
         if (isGuest === 'true') {
+          const savedName = await AsyncStorage.getItem(GUEST_NAME_KEY);
           set({
             status: 'authenticated',
             user: null,
-            profile: createGuestProfile(),
+            profile: createGuestProfile(savedName || 'Guest Player'),
             error: null,
           });
         } else {
@@ -94,10 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInAsGuest: async () => {
     set({ error: null });
     await AsyncStorage.setItem(GUEST_SESSION_KEY, 'true');
+    const savedName = await AsyncStorage.getItem(GUEST_NAME_KEY);
     set({
       status: 'authenticated',
       user: null,
-      profile: createGuestProfile(),
+      profile: createGuestProfile(savedName || 'Guest Player'),
       error: null,
     });
   },
@@ -119,6 +123,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await AsyncStorage.removeItem(GUEST_SESSION_KEY);
+    await AsyncStorage.removeItem(GUEST_NAME_KEY);
     if (authService.getCurrentUser()) {
       await authService.signOut();
     }
@@ -126,6 +131,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setProfile: (profile) => set({ profile }),
+
+  setGuestName: async (name: string) => {
+    const trimmed = name.trim() || 'Guest Player';
+    await AsyncStorage.setItem(GUEST_NAME_KEY, trimmed);
+    const current = get().profile;
+    if (current && current.provider === 'anonymous') {
+      set({
+        profile: {
+          ...current,
+          displayName: trimmed,
+          updatedAt: Date.now(),
+        },
+      });
+    }
+  },
 
   refreshProfile: async () => {
     const user = get().user;

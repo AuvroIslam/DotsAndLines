@@ -13,7 +13,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
-  const setProfile = useAuthStore((s) => s.setProfile);
+  const setGuestName = useAuthStore((s) => s.setGuestName);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const isSaving = useProfileStore((s) => s.isSaving);
   const { guard } = useRequireGoogleAuth();
@@ -29,10 +29,7 @@ export default function ProfileScreen() {
   const handleSave = async () => {
     if (!profile) return;
     if (isGuest) {
-      setProfile({
-        ...profile,
-        displayName: displayName.trim() || 'Guest Player',
-      });
+      await setGuestName(displayName);
       setSavedAt(Date.now());
       return;
     }

@@ -6,14 +6,11 @@ import {
 } from '@react-native-google-signin/google-signin';
 import { useState } from 'react';
 
+import { configureGoogleSignIn } from '@/services/auth/googleAuth';
 import { useAuthStore } from '@/store';
 
-// Configure once globally
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  scopes: ['profile', 'email'],
-});
+// Configure globally
+configureGoogleSignIn();
 
 /**
  * Encapsulates native Google Sign-In and hands the resulting ID token

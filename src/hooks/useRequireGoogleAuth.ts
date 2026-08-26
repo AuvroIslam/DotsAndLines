@@ -7,6 +7,7 @@ import {
 import { useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 
+import { configureGoogleSignIn } from '@/services/auth/googleAuth';
 import { useAuthStore } from '@/store';
 
 /**
@@ -53,6 +54,9 @@ export function useRequireGoogleAuth() {
       });
 
       if (!accepted) return false;
+
+      // Ensure Google Sign-In is configured globally before checking Play Services
+      configureGoogleSignIn();
 
       // Trigger the native Google sign-in.
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
