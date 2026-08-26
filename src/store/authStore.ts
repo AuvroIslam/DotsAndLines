@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { authService, userRepository, type FirebaseUser } from '@/services/firebase';
 import type { AuthProvider, UserProfile } from '@/types';
+
 import { generateUsername } from '@/utils';
 
 export type AuthStatus = 'initializing' | 'authenticated' | 'unauthenticated';
@@ -16,6 +17,8 @@ interface AuthState {
   initialize: () => () => void;
   signInAnonymously: () => Promise<void>;
   signInWithGoogle: (idToken: string) => Promise<void>;
+  /** Upgrade an anonymous session to Google, preserving the uid/data. */
+  linkWithGoogle: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
   setProfile: (profile: UserProfile) => void;
   refreshProfile: () => Promise<void>;
@@ -70,6 +73,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ error: null });
     try {
       await authService.signInWithGoogle(idToken);
+    } catch (e) {
+      set({ error: toMessage(e) });
+      throw e;
+    }
+  },
+
+  linkWithGoogle: async (idToken) => {
+    set({ error: null });
+    try {
+      const prevUid = get().user?.uid;
+      const user = await authService.linkWithGoogle(idToken);
+
+      if (user.uid === prevUid) {
+        // Linked in-place — same uid, just update provider + display info.
+        await userRepository.updateProfile(user.uid, {
+          displayName: user.displayName ?? undefined,
+          photoURL: user.photoURL,
+        });
+        const profileDoc = await userRepository.getProfile(user.uid);
+        if (profileDoc) {
+          const updatedProfile: UserProfile = { ...profileDoc, provider: 'google' as AuthProvider };
+          set({ user, profile: updatedProfile });
+        } else {
+          set({ user });
+        }
+      } else {
+        // Fallback: credential-already-in-use → switched to existing Google
+        // account. The onAuthStateChanged listener will fire and call
+        // ensureProfile for the new uid, so we just need to update the user.
+        // The profile will be set by the initialize() callback.
+        const profile = await userRepository.ensureProfile({
+          uid: user.uid,
+          displayName: user.displayName ?? 'Player',
+          photoURL: user.photoURL,
+          username: generateUsername(user.uid),
+          provider: 'google',
+        });
+        set({ user, profile, error: null });
+      }
     } catch (e) {
       set({ error: toMessage(e) });
       throw e;

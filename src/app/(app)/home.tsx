@@ -16,6 +16,7 @@ import {
 } from '@/components/ui';
 import { useFriends } from '@/features/friends';
 import { useRandomMatchmaking } from '@/features/game/hooks/useRandomMatchmaking';
+import { useRequireGoogleAuth } from '@/hooks/useRequireGoogleAuth';
 import { useGameInvites } from '@/features/notifications';
 import { Routes } from '@/navigation/routes';
 import { useAuthStore } from '@/store';
@@ -30,6 +31,7 @@ export default function HomeScreen() {
   const matchmaking = useRandomMatchmaking();
   const { incomingRequests } = useFriends();
   const { count: inviteCount } = useGameInvites();
+  const { guard } = useRequireGoogleAuth();
   const [pickedBoard, setPickedBoard] = useState<BoardSize>(DEFAULT_BOARD);
   const colors = useThemeColors();
   const pickedLabel =
@@ -56,7 +58,10 @@ export default function HomeScreen() {
             accessibilityLabel="Open game invitations"
             variant="secondary"
             style={styles.bell}
-            onPress={() => router.push(Routes.notifications)}
+            onPress={async () => {
+              if (!(await guard())) return;
+              router.push(Routes.notifications);
+            }}
           />
           <Badge count={inviteCount} floating />
         </View>
@@ -96,7 +101,10 @@ export default function HomeScreen() {
             subtitle="Jump into the first open game"
             icon="flash"
             accent={colors.primary}
-            onPress={() => void matchmaking.start({ flexible: true })}
+            onPress={async () => {
+              if (!(await guard())) return;
+              void matchmaking.start({ flexible: true });
+            }}
           />
           <Card style={[styles.boardPicker, { borderColor: colors.warning }]}>
             <View style={styles.pickerTitle}>
@@ -119,7 +127,10 @@ export default function HomeScreen() {
               label={`Find a ${pickedLabel} match`}
               icon="search"
               variant="secondary"
-              onPress={() => void matchmaking.start({ flexible: false, boardSize: pickedBoard })}
+              onPress={async () => {
+                if (!(await guard())) return;
+                void matchmaking.start({ flexible: false, boardSize: pickedBoard });
+              }}
             />
           </Card>
         </>
@@ -141,7 +152,10 @@ export default function HomeScreen() {
           accent={colors.warning}
           compact
           style={styles.modeItem}
-          onPress={() => router.push(Routes.createRoom)}
+          onPress={async () => {
+            if (!(await guard())) return;
+            router.push(Routes.createRoom);
+          }}
         />
       </View>
 
@@ -159,7 +173,10 @@ export default function HomeScreen() {
           accent={colors.primary}
           compact
           style={styles.gridItem}
-          onPress={() => router.push(Routes.friends)}
+          onPress={async () => {
+            if (!(await guard())) return;
+            router.push(Routes.friends);
+          }}
         />
         <MenuCard
           title="Requests"
@@ -169,7 +186,10 @@ export default function HomeScreen() {
           compact
           badge={incomingRequests.length}
           style={styles.gridItem}
-          onPress={() => router.push(Routes.friendRequests)}
+          onPress={async () => {
+            if (!(await guard())) return;
+            router.push(Routes.friendRequests);
+          }}
         />
         <MenuCard
           title="History"
@@ -178,7 +198,10 @@ export default function HomeScreen() {
           accent={colors.purple}
           compact
           style={styles.gridItem}
-          onPress={() => router.push(Routes.history)}
+          onPress={async () => {
+            if (!(await guard())) return;
+            router.push(Routes.history);
+          }}
         />
         <MenuCard
           title="Scorebook"
@@ -187,7 +210,10 @@ export default function HomeScreen() {
           accent={colors.success}
           compact
           style={styles.gridItem}
-          onPress={() => router.push(Routes.statistics)}
+          onPress={async () => {
+            if (!(await guard())) return;
+            router.push(Routes.statistics);
+          }}
         />
       </View>
 
